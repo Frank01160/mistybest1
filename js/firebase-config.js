@@ -19,17 +19,23 @@
 
    Nothing else in this file needs to change.
    ========================================================================== */
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAACs_nT6_AqwBdF9nSFVl-CcDiyKzhpZw",
-  authDomain: "mistybest.firebaseapp.com",
-  projectId: "mistybest",
-  storageBucket: "mistybest.firebasestorage.app",
-  messagingSenderId: "236020663058",
-  appId: "1:236020663058:web:9a1891d3c9fe9d0428e9cb",
+  apiKey: "AIzaSyAr1dy4xGnUrHQDU2PYY8qTTd4zkYHq8dE",
+  authDomain: "mistybest1.firebaseapp.com",
+  projectId: "mistybest1",
+  storageBucket: "mistybest1.firebasestorage.app",
+  messagingSenderId: "1001303023966",
+  appId: "1:1001303023966:web:abd8d06599c7cf8515afcf"
 };
 
-firebase.initializeApp(firebaseConfig);
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
 // Shared handles used across every page's JS files.
 const auth = firebase.auth();
@@ -55,8 +61,8 @@ db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
    there's no in-app flow for it.
    ========================================================================== */
 const FIXED_EMAILS = {
-  seller: "seller@mistycode.local",
-  manager: "manager@mistycode.local",
+  seller: "seller@gmail.com",
+  manager: "manager@gmail.com",
 };
 
 /* Firestore structure this app expects (create the first two docs manually
