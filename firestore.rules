@@ -1,0 +1,126 @@
+rules_version = '2';
+
+// ============================================================================
+// FIRESTORE SECURITY RULES — Misty Code POS
+// ----------------------------------------------------------------------------
+// Paste this into Firebase Console → Firestore Database → Rules, then click
+// Publish (saving a draft is not the same as publishing).
+//
+// Fixed from the previous version: helper functions must live INSIDE the
+// service/match block so $(database) is in scope. Defining them outside
+// caused every read/write to be denied, which is why you were seeing
+// permission-denied errors everywhere even while correctly signed in.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isManager() {
+      return isSignedIn() && myRole() == 'manager';
+    }
+
+    function isSeller() {
+      return isSignedIn() && myRole() == 'seller';
+    }
+
+    function isStaff() {
+      return isManager() || isSeller();
+    }
+
+    // ----- users: each account can read only its own role/profile doc.
+    // No client writes — provision these manually in the console.
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // ----- businessConfig: any signed-in staff can read (drives the logo
+    // and receipt header everywhere); only the manager can change it.
+    match /businessConfig/{docId} {
+      allow read: if isStaff();
+      allow write: if isManager();
+    }
+
+    // ----- categories: staff can read (POS needs them for filtering);
+    // only the manager creates/edits/deletes them.
+    match /categories/{categoryId} {
+      allow read: if isStaff();
+      allow write: if isManager();
+    }
+
+    // ----- products: staff can read. Full create/delete/field-edits are
+    // manager-only. A seller may only ever update stockMinorUnits, and
+    // only to *decrease* it (selling stock down) — never price, name,
+    // thresholds, or an increase (that's a manager-only stock adjustment).
+    match /products/{productId} {
+      allow read: if isStaff();
+      allow create, delete: if isManager();
+      allow update: if isManager() ||
+        (isSeller() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockMinorUnits']) &&
+         request.resource.data.stockMinorUnits <= resource.data.stockMinorUnits);
+    }
+
+    // ----- sales: staff can create sales attributed to themselves, and
+    // read the sales list (Reports page). No edits or deletes from the
+    // client — there are no returns/refunds in this system, sales are
+    // an immutable record once written.
+    match /sales/{saleId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.servedBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ----- stockAdjustments: manager-only, and immutable once written
+    // (it's an audit trail).
+    match /stockAdjustments/{adjustmentId} {
+      allow read: if isManager();
+      allow create: if isManager() && request.resource.data.adjustedBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ----- banks: staff can read (needed for the Deposit/Withdraw dropdown
+    // and filter chips). Only the manager creates/edits/deletes a bank.
+    // The one exception: any staff member creating a deposit/withdrawal
+    // transaction needs to bump that bank's seqCounter by exactly 1 (for
+    // sequential transaction numbers) — same carve-out pattern as the
+    // stockMinorUnits exception on products above.
+    match /banks/{bankId} {
+      allow read: if isStaff();
+      allow create, delete: if isManager();
+      allow update: if isManager() ||
+        (isStaff() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['seqCounter']) &&
+         request.resource.data.seqCounter == resource.data.seqCounter + 1);
+    }
+
+    // ----- cashTransactions: staff can create deposit/withdrawal records
+    // attributed to themselves, and read the history. No edits or deletes
+    // from the client — this is a financial ledger, immutable once written,
+    // same principle as sales.
+    match /cashTransactions/{transactionId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.enteredBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ----- counters: used only for sequential receipt numbering. Staff
+    // may increment it by exactly 1 as part of completing a sale.
+    match /counters/{counterId} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.value == 1;
+      allow update: if isStaff() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['value']) &&
+        request.resource.data.value == resource.data.value + 1;
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,21 @@
+/* ==========================================================================
+   PARTICLES.CSS — animated background canvas
+   --------------------------------------------------------------------------
+   The canvas sits fixed behind all page content. When a background mode
+   is active, the page body is made transparent so the canvas (which
+   paints its own theme-colored fill each frame) shows through as the
+   actual background — not just a decoration floating on top.
+   ========================================================================== */
+
+#bgCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  display: block;
+}
+
+html[data-bg="particles"] body,
+html[data-bg="lines"] body {
+  background: transparent;
+}
