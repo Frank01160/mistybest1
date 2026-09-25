@@ -12,8 +12,10 @@
 <body>
   <script>
     (function () {
-      var saved = localStorage.getItem("mc_theme");
-      if (saved === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      var savedTheme = localStorage.getItem("mc_theme");
+      if (savedTheme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      var savedPalette = localStorage.getItem("mc_palette");
+      if (savedPalette) document.documentElement.setAttribute("data-palette", savedPalette);
     })();
   </script>
 
