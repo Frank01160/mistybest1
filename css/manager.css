@@ -1,467 +1,278 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inventory — Misty Code</title>
-  <link rel="stylesheet" href="../css/theme.css" />
-  <link rel="stylesheet" href="../css/animations.css" />
-  <link rel="stylesheet" href="../css/particles.css" />
-  <link rel="stylesheet" href="../css/manager.css" />
-</head>
-<body>
-  <script>
-    (function () {
-      var savedTheme = localStorage.getItem("mc_theme");
-      if (savedTheme === "dark") document.documentElement.setAttribute("data-theme", "dark");
-      var savedPalette = localStorage.getItem("mc_palette");
-      if (savedPalette) document.documentElement.setAttribute("data-palette", savedPalette);
-    })();
-  </script>
+/* ==========================================================================
+   MANAGER.CSS — Inventory / manager screen
+   ========================================================================== */
 
-  <header class="app-header">
-    <div class="logo" id="headerLogo">
-      <span class="logo-badge" id="logoBadge">MC</span>
-      <span class="logo-name" id="logoName">Misty Code</span>
-    </div>
+.hidden { display: none !important; }
 
-    <nav class="app-nav">
-      <a href="pos.html" class="nav-link">Sell</a>
-      <a href="reports.html" class="nav-link">Reports</a>
-      <a href="withdrawals.html" class="nav-link">Deposit/Withdraw</a>
-      <a href="manager.html" class="nav-link active">Inventory</a>
-    </nav>
+/* Shared header pattern (duplicated intentionally — each page owns its CSS) */
+.app-header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xl);
+  padding: 0 var(--space-lg);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.app-nav { display: flex; gap: var(--space-lg); flex: 1; }
+.nav-link {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  padding: var(--space-sm) 0;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.nav-link:hover { color: var(--color-text-primary); }
+.nav-link.active { color: var(--color-brand-primary); border-bottom-color: var(--color-brand-secondary); }
+.app-header-right { display: flex; align-items: center; gap: var(--space-md); }
+.user-chip { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
-    <div class="app-header-right">
-      <div class="conn-badge conn-online" id="connBadge">
-        <span class="dot"></span>
-        <span id="connText">Online</span>
-      </div>
-      <div class="user-chip">
-        <span class="badge badge-manager">Manager</span>
-        <span id="userName">—</span>
-      </div>
-      <button class="btn btn-ghost" id="logoutBtn">Log out</button>
-    </div>
-  </header>
+/* ----- Layout ---------------------------------------------------------------- */
+.manager-layout {
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  padding: var(--space-lg);
+}
 
-  <main class="manager-layout">
-    <div class="manager-tabs" role="tablist">
-      <button class="tab-btn active" data-tab="products">Products</button>
-      <button class="tab-btn" data-tab="categories">Categories</button>
-      <button class="tab-btn" data-tab="banks">Banks</button>
-      <button class="tab-btn" data-tab="stock-history" id="stock-history-tab">Stock history</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
-    </div>
+.manager-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-lg);
+}
+.tab-btn {
+  padding: var(--space-sm) var(--space-md);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tab-btn:hover { color: var(--color-text-primary); }
+.tab-btn.active { color: var(--color-brand-primary); border-bottom-color: var(--color-brand-primary); }
 
-    <!-- ===== PRODUCTS TAB ===== -->
-    <section class="tab-panel anim-page-in" id="panel-products">
-      <div class="panel-toolbar">
-        <div class="search-wrap">
-          <span class="search-icon" aria-hidden="true">🔍</span>
-          <input type="search" id="productSearchInput" placeholder="Search products…" />
-        </div>
-        <button class="btn btn-primary" id="addProductBtn">+ Add product</button>
-      </div>
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+.panel-toolbar h2 { font-size: var(--font-size-lg); }
 
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Category</th>
-              <th>Unit</th>
-              <th>Price</th>
-              <th>Stock</th>
-              <th>Low stock alert</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="productsTableBody">
-            <!-- rows injected by manager.js -->
-          </tbody>
-        </table>
-      </div>
-      <div class="empty-state hidden" id="productsEmpty">
-        <h3>No products yet</h3>
-        <p>Add your first product to start selling.</p>
-      </div>
-    </section>
+.search-wrap { position: relative; min-width: 260px; flex: 1; max-width: 360px; }
+.search-icon { position: absolute; left: var(--space-sm); top: 50%; transform: translateY(-50%); opacity: 0.5; }
+.search-wrap input {
+  width: 100%;
+  padding: 10px 10px 10px 34px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
 
-    <!-- ===== CATEGORIES TAB ===== -->
-    <section class="tab-panel hidden" id="panel-categories">
-      <div class="panel-toolbar">
-        <h2>Categories</h2>
-        <button class="btn btn-primary" id="addCategoryBtn">+ Add category</button>
-      </div>
-      <div class="category-list" id="categoryList">
-        <!-- injected -->
-      </div>
-    </section>
+/* ----- Products table --------------------------------------------------------- */
+.stock-cell.low { color: var(--color-warning); font-weight: var(--font-weight-medium); }
+.stock-cell.out { color: var(--color-danger); font-weight: var(--font-weight-medium); }
+.row-actions { display: flex; gap: var(--space-xs); }
 
-    <!-- ===== BANKS TAB ===== -->
-    <section class="tab-panel hidden" id="panel-banks">
-      <div class="panel-toolbar">
-        <h2>Banks &amp; channels</h2>
-        <button class="btn btn-primary" id="addBankBtn">+ Add bank</button>
-      </div>
-      <p class="settings-desc">These appear as choices in the Deposit/Withdraw tab. The code is used in transaction numbers (e.g. M-Pesa → 0001MPE).</p>
-      <div class="category-list" id="bankList">
-        <!-- injected by manager.js -->
-      </div>
-    </section>
+/* ----- Categories -------------------------------------------------------------- */
+.category-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.category-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.category-item-count { color: var(--color-text-muted); font-size: var(--font-size-xs); }
 
-    <!-- ===== STOCK HISTORY TAB ===== -->
-    <section class="tab-panel hidden" id="panel-stock-history">
-      <div class="panel-toolbar">
-        <h2>Stock adjustment history</h2>
-        <div class="filter-row">
-          <select id="historyProductFilter">
-            <option value="all">All products</option>
-          </select>
-          <input type="date" id="historyFromDate" />
-          <input type="date" id="historyToDate" />
-        </div>
-      </div>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Product</th>
-              <th>Change</th>
-              <th>New stock</th>
-              <th>Reason</th>
-              <th>Adjusted by</th>
-            </tr>
-          </thead>
-          <tbody id="historyTableBody"></tbody>
-        </table>
-      </div>
-      <div class="empty-state hidden" id="historyEmpty">
-        <h3>No stock adjustments yet</h3>
-        <p>Adjustments you make to product stock will appear here.</p>
-      </div>
-    </section>
+/* ----- Stock history filters ---------------------------------------------------- */
+.filter-row {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+.filter-row select, .filter-row input {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.change-positive { color: var(--color-success); font-weight: var(--font-weight-medium); }
+.change-negative { color: var(--color-danger); font-weight: var(--font-weight-medium); }
 
-    <!-- ===== SETTINGS TAB ===== -->
-    <section class="tab-panel hidden" id="panel-settings">
-      <div class="settings-grid">
+/* ----- Settings ------------------------------------------------------------------ */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-lg);
+}
+.settings-card { padding: var(--space-lg); }
+.settings-card h3 { margin-bottom: var(--space-2xs); }
+.settings-desc { font-size: var(--font-size-sm); color: var(--color-text-secondary); margin-bottom: var(--space-md); }
+.settings-card .field { margin-bottom: var(--space-md); }
+.settings-card > .btn { margin-top: var(--space-xs); }
 
-        <div class="card settings-card">
-          <h3>Business details</h3>
-          <p class="settings-desc">Your company name drives the logo shown across the system and on receipts.</p>
-          <div class="field">
-            <label for="companyNameInput">Company name</label>
-            <input type="text" id="companyNameInput" value="Misty Code" />
-          </div>
-          <div class="field">
-            <label for="companyAddressInput">Address (optional, shown on receipts)</label>
-            <input type="text" id="companyAddressInput" placeholder="e.g. Kimathi Street, Nyeri" />
-          </div>
-          <div class="field">
-            <label for="companyPhoneInput">Phone (optional, shown on receipts)</label>
-            <input type="text" id="companyPhoneInput" placeholder="e.g. 0712 345 678" />
-          </div>
-          <button class="btn btn-primary" id="saveBusinessBtn">Save changes</button>
-        </div>
+.theme-toggle { display: flex; gap: var(--space-sm); }
+.theme-toggle .btn.active-theme {
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+  background: var(--color-brand-primary-soft);
+}
 
-        <div class="card settings-card">
-          <h3>Appearance</h3>
-          <p class="settings-desc">Switch between light and dark mode. This is saved on this device.</p>
-          <div class="theme-toggle">
-            <button class="btn btn-outline" id="lightModeBtn">☀️ Light</button>
-            <button class="btn btn-outline" id="darkModeBtn">🌙 Dark</button>
-          </div>
-        </div>
+.settings-card-wide { grid-column: 1 / -1; }
 
-        <div class="card settings-card settings-card-wide">
-          <h3>Color theme</h3>
-          <p class="settings-desc">Pick the app's whole color scheme — buttons, header, badges, and the logo all follow this. Works with both light and dark mode. Saved on this device.</p>
-          <div class="palette-grid" id="paletteGrid">
-            <button class="palette-swatch active" data-palette="ocean">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #1b4965, #d4a62a);"></span>
-              <span>Ocean Blue</span>
-            </button>
-            <button class="palette-swatch" data-palette="forest">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #2f6b46, #c98a2b);"></span>
-              <span>Forest Green</span>
-            </button>
-            <button class="palette-swatch" data-palette="sunset">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #b13c6c, #e0954a);"></span>
-              <span>Sunset Pink</span>
-            </button>
-            <button class="palette-swatch" data-palette="ruby">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #a3293a, #c9942f);"></span>
-              <span>Ruby Red</span>
-            </button>
-            <button class="palette-swatch" data-palette="royal">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #5b3a8e, #c9a02f);"></span>
-              <span>Royal Purple</span>
-            </button>
-            <button class="palette-swatch" data-palette="amber">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #8a5a1f, #2f6690);"></span>
-              <span>Amber Gold</span>
-            </button>
-            <button class="palette-swatch" data-palette="teal">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #1a6b6b, #c9702f);"></span>
-              <span>Teal</span>
-            </button>
-            <button class="palette-swatch" data-palette="slate">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #3a4148, #b88a3a);"></span>
-              <span>Slate Charcoal</span>
-            </button>
-            <button class="palette-swatch" data-palette="coral">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #c1543a, #2f7a7a);"></span>
-              <span>Coral</span>
-            </button>
-            <button class="palette-swatch" data-palette="indigo">
-              <span class="palette-dot" style="background: linear-gradient(135deg, #3f4bb0, #c98a3a);"></span>
-              <span>Indigo</span>
-            </button>
-          </div>
-        </div>
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--space-sm);
+}
+.palette-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.palette-swatch:hover { border-color: var(--color-text-secondary); }
+.palette-swatch.active {
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary-soft);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-medium);
+}
+.palette-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: block;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
 
-        <div class="card settings-card">
-          <h3>Background</h3>
-          <p class="settings-desc">Give the app a bit of motion. This is saved on this device, so each till can look different if you want.</p>
-          <div class="bg-options">
-            <button class="bg-option" data-bg-mode="default">
-              <span class="bg-option-preview bg-preview-default"></span>
-              <span>Default</span>
-            </button>
-            <button class="bg-option" data-bg-mode="particles">
-              <span class="bg-option-preview bg-preview-particles"></span>
-              <span>Particles</span>
-            </button>
-            <button class="bg-option" data-bg-mode="lines">
-              <span class="bg-option-preview bg-preview-lines"></span>
-              <span>Connected lines</span>
-            </button>
-          </div>
-        </div>
+.bg-options {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+.bg-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-xs);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.bg-option:hover { border-color: var(--color-brand-primary); }
+.bg-option.active {
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary-soft);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-medium);
+}
+.bg-option-preview {
+  width: 64px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+.bg-preview-default { background: var(--color-bg); }
+.bg-preview-particles {
+  background: var(--color-bg);
+  background-image: radial-gradient(circle, var(--color-brand-primary) 1px, transparent 1.5px);
+  background-size: 10px 10px;
+}
+.bg-preview-lines {
+  background: var(--color-bg);
+  background-image:
+    radial-gradient(circle, var(--color-brand-secondary) 1px, transparent 1.5px),
+    repeating-linear-gradient(45deg, var(--color-brand-primary) 0, var(--color-brand-primary) 1px, transparent 1px, transparent 10px);
+  background-size: 12px 12px, 100% 100%;
+  opacity: 0.9;
+}
 
-        <div class="card settings-card">
-          <h3>Account access</h3>
-          <p class="settings-desc">Send a password reset link to either account. They'll set a new password by following the emailed link — this system can't set it for them directly.</p>
-          <div class="reset-row">
-            <div>
-              <strong>Seller account</strong>
-              <div class="hint" id="sellerEmailDisplay">seller@mistycode.local</div>
-            </div>
-            <button class="btn btn-outline" id="resetSellerBtn">Send reset link</button>
-          </div>
-          <div class="reset-row">
-            <div>
-              <strong>Manager account</strong>
-              <div class="hint" id="managerEmailDisplay">manager@mistycode.local</div>
-            </div>
-            <button class="btn btn-outline" id="resetManagerBtn">Send reset link</button>
-          </div>
-        </div>
+.reset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-md);
+}
+.reset-row:last-child { border-bottom: none; }
 
-      </div>
-    </section>
-  </main>
+/* ----- Product / adjustment modals ------------------------------------------------ */
+.product-modal { max-width: 520px; }
 
-  <!-- ===== Add/Edit product modal ===== -->
-  <div class="modal-overlay hidden" id="productModalOverlay">
-    <div class="modal product-modal" id="productModal">
-      <div class="modal-header">
-        <h3 id="productModalTitle">Add product</h3>
-        <button class="btn btn-ghost btn-sm" id="productModalClose">✕</button>
-      </div>
+.field-label-standalone {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  display: block;
+  margin-bottom: var(--space-xs);
+}
 
-      <form id="productForm">
-        <div class="field">
-          <label for="prodNameInput">Product name</label>
-          <input type="text" id="prodNameInput" required />
-        </div>
+.unit-type-toggle {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+.unit-type-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+.unit-type-btn.active {
+  background: var(--color-brand-primary-soft);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-medium);
+}
 
-        <div class="field">
-          <label for="prodCategorySelect">Category</label>
-          <select id="prodCategorySelect">
-            <option value="__new__">+ New category</option>
-          </select>
-          <input type="text" id="prodNewCategoryInput" class="hidden" placeholder="New category name" />
-        </div>
+.unit-fields { display: flex; flex-direction: column; gap: var(--space-md); margin-bottom: var(--space-md); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
 
-        <div class="field">
-          <span class="field-label-standalone">Unit type</span>
-          <div class="unit-type-toggle">
-            <button type="button" class="unit-type-btn active" data-unit-type="single">Single unit</button>
-            <button type="button" class="unit-type-btn" data-unit-type="double">Two units (e.g. sack / kg)</button>
-          </div>
-        </div>
+#productForm textarea, #adjustForm textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  resize: vertical;
+  font-family: inherit;
+  margin-top: var(--space-2xs);
+}
 
-        <!-- SINGLE UNIT FIELDS -->
-        <div id="singleUnitFields" class="unit-fields">
-          <div class="field">
-            <label for="singleUnitNameInput">Unit name</label>
-            <input type="text" id="singleUnitNameInput" list="unitSuggestions" placeholder="e.g. piece, bottle, box" />
-            <datalist id="unitSuggestions"></datalist>
-          </div>
-          <div class="field">
-            <label for="singlePriceInput">Price per unit (KSh)</label>
-            <input type="number" id="singlePriceInput" min="0" step="1" />
-          </div>
-          <div class="field">
-            <label for="singleStockInput">Stock quantity</label>
-            <input type="number" id="singleStockInput" min="0" step="1" />
-          </div>
-        </div>
-
-        <!-- DOUBLE UNIT FIELDS -->
-        <div id="doubleUnitFields" class="unit-fields hidden">
-          <div class="field-row">
-            <div class="field">
-              <label for="majorUnitNameInput">Major unit name</label>
-              <input type="text" id="majorUnitNameInput" list="majorUnitSuggestions" placeholder="e.g. sack, carton" />
-              <datalist id="majorUnitSuggestions"></datalist>
-            </div>
-            <div class="field">
-              <label for="minorUnitNameInput">Minor unit name</label>
-              <input type="text" id="minorUnitNameInput" list="minorUnitSuggestions" placeholder="e.g. kg, piece" />
-              <datalist id="minorUnitSuggestions"></datalist>
-            </div>
-          </div>
-          <div class="field">
-            <label for="minorPerMajorInput">Minor units per major unit</label>
-            <input type="number" id="minorPerMajorInput" min="0.01" step="0.01" placeholder="e.g. 20" />
-            <span class="hint" id="conversionHint">e.g. 20 kg per sack — used only to track stock, not pricing</span>
-          </div>
-          <div class="field-row">
-            <div class="field">
-              <label for="pricePerMajorInput">Price per major unit (KSh)</label>
-              <input type="number" id="pricePerMajorInput" min="0" step="1" placeholder="e.g. 800 per sack" />
-            </div>
-            <div class="field">
-              <label for="pricePerMinorInput">Price per minor unit (KSh)</label>
-              <input type="number" id="pricePerMinorInput" min="0" step="1" placeholder="e.g. 10 per kg" />
-            </div>
-          </div>
-          <p class="hint" id="priceCompareHint"></p>
-          <div class="field">
-            <label for="totalMinorStockInput">Total stock, in minor units</label>
-            <input type="number" id="totalMinorStockInput" min="0" step="0.01" placeholder="e.g. 200" />
-            <span class="hint" id="majorStockHint">≈ 0 major units</span>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="lowStockInput">Low stock alert threshold</label>
-          <input type="number" id="lowStockInput" min="0" step="1" value="0" />
-          <span class="hint">Alert triggers after a sale drops stock to or below this number (in minor units for two-unit products).</span>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" class="btn btn-outline" id="productCancelBtn">Cancel</button>
-          <button type="button" class="btn btn-danger hidden" id="archiveProductBtn">Archive</button>
-          <button type="submit" class="btn btn-primary">Save product</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ===== Stock adjustment modal ===== -->
-  <div class="modal-overlay hidden" id="adjustModalOverlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="adjustModalTitle">Adjust stock</h3>
-        <button class="btn btn-ghost btn-sm" id="adjustModalClose">✕</button>
-      </div>
-      <form id="adjustForm">
-        <p class="hint" id="adjustCurrentStock">Current stock: —</p>
-        <div class="field">
-          <span class="field-label-standalone">Adjustment type</span>
-          <div class="unit-type-toggle">
-            <button type="button" class="unit-type-btn active" data-adjust-type="add">+ Add stock</button>
-            <button type="button" class="unit-type-btn" data-adjust-type="remove">− Remove stock</button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="adjustQtyInput">Quantity</label>
-          <input type="number" id="adjustQtyInput" min="0" step="0.01" required />
-        </div>
-        <div class="field">
-          <label for="adjustReasonInput">Reason (required)</label>
-          <select id="adjustReasonSelect">
-            <option value="Recount">Recount</option>
-            <option value="Damaged">Damaged</option>
-            <option value="Expired">Expired</option>
-            <option value="Theft/loss">Theft/loss</option>
-            <option value="New delivery">New delivery</option>
-            <option value="Other">Other</option>
-          </select>
-          <textarea id="adjustReasonInput" rows="2" placeholder="Add detail if needed" required></textarea>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-outline" id="adjustCancelBtn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save adjustment</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ===== Add category modal ===== -->
-  <div class="modal-overlay hidden" id="categoryModalOverlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>Add category</h3>
-        <button class="btn btn-ghost btn-sm" id="categoryModalClose">✕</button>
-      </div>
-      <form id="categoryForm">
-        <div class="field">
-          <label for="newCategoryNameInput">Category name</label>
-          <input type="text" id="newCategoryNameInput" required />
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-outline" id="categoryCancelBtn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Add</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ===== Add/edit bank modal ===== -->
-  <div class="modal-overlay hidden" id="bankModalOverlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h3 id="bankModalTitle">Add bank</h3>
-        <button class="btn btn-ghost btn-sm" id="bankModalClose">✕</button>
-      </div>
-      <form id="bankForm">
-        <div class="field">
-          <label for="bankNameInput">Bank / channel name</label>
-          <input type="text" id="bankNameInput" placeholder="e.g. M-Pesa" required />
-        </div>
-        <div class="field">
-          <label for="bankCodeInput">Code (3 letters, used in transaction numbers)</label>
-          <input type="text" id="bankCodeInput" maxlength="3" placeholder="e.g. MPE" required style="text-transform:uppercase;" />
-          <span class="hint" id="bankCodeHint">e.g. 0001MPE, 0002MPE…</span>
-        </div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-outline" id="bankCancelBtn">Cancel</button>
-          <button type="button" class="btn btn-danger hidden" id="deleteBankBtn">Delete</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="toast-stack" id="toastStack"></div>
-
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-
-  <script src="../js/firebase-config.js"></script>
-  <script src="../js/utils.js"></script>
-  <script src="../js/logo.js"></script>
-  <script src="../js/connectivity.js"></script>
-  <script src="../js/particles.js"></script>
-  <script src="../js/auth.js"></script>
-  <script src="../js/nav.js"></script>
-  <script src="../js/manager.js"></script>
-</body>
-</html>
+@media (max-width: 640px) {
+  .field-row { grid-template-columns: 1fr; }
+  .app-nav { display: none; }
+}
