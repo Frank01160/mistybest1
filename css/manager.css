@@ -134,6 +134,41 @@
   background: var(--color-brand-primary-soft);
 }
 
+.settings-card-wide { grid-column: 1 / -1; }
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--space-sm);
+}
+.palette-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.palette-swatch:hover { border-color: var(--color-text-secondary); }
+.palette-swatch.active {
+  border-color: var(--color-brand-primary);
+  background: var(--color-brand-primary-soft);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-medium);
+}
+.palette-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: block;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
 .bg-options {
   display: flex;
   gap: var(--space-sm);
