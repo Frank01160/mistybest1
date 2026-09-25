@@ -12,8 +12,10 @@
 <body>
   <script>
     (function () {
-      var saved = localStorage.getItem("mc_theme");
-      if (saved === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      var savedTheme = localStorage.getItem("mc_theme");
+      if (savedTheme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+      var savedPalette = localStorage.getItem("mc_palette");
+      if (savedPalette) document.documentElement.setAttribute("data-palette", savedPalette);
     })();
   </script>
 
@@ -170,6 +172,53 @@
           <div class="theme-toggle">
             <button class="btn btn-outline" id="lightModeBtn">☀️ Light</button>
             <button class="btn btn-outline" id="darkModeBtn">🌙 Dark</button>
+          </div>
+        </div>
+
+        <div class="card settings-card settings-card-wide">
+          <h3>Color theme</h3>
+          <p class="settings-desc">Pick the app's whole color scheme — buttons, header, badges, and the logo all follow this. Works with both light and dark mode. Saved on this device.</p>
+          <div class="palette-grid" id="paletteGrid">
+            <button class="palette-swatch active" data-palette="ocean">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #1b4965, #d4a62a);"></span>
+              <span>Ocean Blue</span>
+            </button>
+            <button class="palette-swatch" data-palette="forest">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #2f6b46, #c98a2b);"></span>
+              <span>Forest Green</span>
+            </button>
+            <button class="palette-swatch" data-palette="sunset">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #b13c6c, #e0954a);"></span>
+              <span>Sunset Pink</span>
+            </button>
+            <button class="palette-swatch" data-palette="ruby">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #a3293a, #c9942f);"></span>
+              <span>Ruby Red</span>
+            </button>
+            <button class="palette-swatch" data-palette="royal">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #5b3a8e, #c9a02f);"></span>
+              <span>Royal Purple</span>
+            </button>
+            <button class="palette-swatch" data-palette="amber">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #8a5a1f, #2f6690);"></span>
+              <span>Amber Gold</span>
+            </button>
+            <button class="palette-swatch" data-palette="teal">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #1a6b6b, #c9702f);"></span>
+              <span>Teal</span>
+            </button>
+            <button class="palette-swatch" data-palette="slate">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #3a4148, #b88a3a);"></span>
+              <span>Slate Charcoal</span>
+            </button>
+            <button class="palette-swatch" data-palette="coral">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #c1543a, #2f7a7a);"></span>
+              <span>Coral</span>
+            </button>
+            <button class="palette-swatch" data-palette="indigo">
+              <span class="palette-dot" style="background: linear-gradient(135deg, #3f4bb0, #c98a3a);"></span>
+              <span>Indigo</span>
+            </button>
           </div>
         </div>
 
