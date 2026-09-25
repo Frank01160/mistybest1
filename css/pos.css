@@ -434,15 +434,17 @@
     margin: 0;
   }
 
-  /* Tells the browser (and "Save as PDF") to use a narrow receipt-shaped
-     page instead of defaulting to A4. Most actual thermal receipt printer
-     drivers use their own fixed roll width regardless, but this is what
-     makes "Print → Save as PDF" produce a proper slip-shaped file. On a
-     printer/driver that ignores this and still uses A4, the content above
-     is now positioned at the top-left corner rather than centered, so it
-     still reads like a small receipt rather than a mostly-blank page. */
+  /* Tells the browser (and "Save as PDF") to use a page the width of half
+     an A4 sheet cut vertically (105mm), portrait, with height that grows
+     to fit the content rather than a fixed A4 height. Most actual thermal
+     receipt printer drivers use their own fixed roll width regardless,
+     but this is what makes "Print → Save as PDF" produce a half-A4-width
+     slip. On a printer/driver that ignores this and still forces full A4,
+     the content above is positioned at the top-left corner rather than
+     centered, so it still reads like a narrow receipt rather than a
+     mostly-blank sheet. */
   @page {
-    size: 80mm auto;
+    size: 105mm auto;
     margin: 0;
   }
 }
