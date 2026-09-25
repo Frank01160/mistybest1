@@ -677,6 +677,21 @@ function wireSettings() {
     refreshThemeButtons();
   });
 
+  const paletteButtons = document.querySelectorAll(".palette-swatch");
+  function refreshPaletteButtons() {
+    const current = localStorage.getItem("mc_palette") || "ocean";
+    paletteButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.palette === current));
+  }
+  refreshPaletteButtons();
+  paletteButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const palette = btn.dataset.palette;
+      document.documentElement.setAttribute("data-palette", palette);
+      localStorage.setItem("mc_palette", palette);
+      refreshPaletteButtons();
+    });
+  });
+
   const bgButtons = document.querySelectorAll(".bg-option");
   function refreshBgButtons() {
     const current = localStorage.getItem("mc_background") || "default";
