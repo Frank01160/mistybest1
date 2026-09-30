@@ -251,28 +251,82 @@
   margin-bottom: var(--space-2xs);
 }
 
-.payment-toggle {
+.payment-section { display: flex; flex-direction: column; gap: var(--space-sm); }
+.payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.payment-remaining {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-brand-primary);
+}
+.payment-remaining.zero { color: var(--color-success); }
+
+.payment-lines { display: flex; flex-direction: column; gap: var(--space-xs); }
+.payment-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+  font-size: var(--font-size-sm);
+}
+.payment-line-remove {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+  line-height: 1;
+  padding: 0 4px;
+}
+.payment-line-remove:hover { color: var(--color-danger); }
+
+.payment-method-picker {
   display: flex;
   gap: var(--space-xs);
+  flex-wrap: wrap;
 }
 .payment-btn {
   flex: 1;
-  padding: 10px;
+  min-width: 90px;
+  padding: 10px 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+  transition: all var(--transition-fast);
+}
+.payment-btn:hover { border-color: var(--color-brand-primary); }
+.payment-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.payment-entry {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  background: var(--color-surface-alt);
+}
+.payment-entry-actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+
+.transfer-channel-toggle { display: flex; gap: var(--space-xs); }
+.channel-btn {
+  flex: 1;
+  padding: 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   font-size: var(--font-size-sm);
-  transition: all var(--transition-fast);
 }
-.payment-btn.active[data-method="cash"] {
-  background: var(--color-payment-cash-soft);
-  border-color: var(--color-payment-cash);
-  color: var(--color-payment-cash);
-}
-.payment-btn.active[data-method="mobile"] {
+.channel-btn.active {
   background: var(--color-payment-mobile-soft);
   border-color: var(--color-payment-mobile);
   color: var(--color-payment-mobile);
+  font-weight: var(--font-weight-medium);
 }
 
 .complete-sale-btn {
