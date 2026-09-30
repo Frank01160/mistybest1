@@ -5,10 +5,11 @@
 let currentUser = null;
 let allProducts = [];
 let allCategories = [];
+let allBanksForPayment = [];
 let activeCategory = "all";
 let searchTerm = "";
 let basket = []; // { lineId, productId, name, unitSold, unitLabel, qty, minorUnitsDeducted, pricePerUnitSold, lineTotal }
-let selectedPaymentMethod = "cash";
+let paymentLines = []; // { lineId, method, amount, channel?, bankId?, bankName?, bankCode?, withdrawalAmount?, appliedToSale?, changeGiven? }
 let businessInfo = { companyName: "Misty Code", address: "", phone: "" };
 
 // ----- Modal state for the product being configured -----------------------
@@ -21,7 +22,9 @@ let modalQty = 0;
   loadBusinessInfo();
   listenToCategories();
   listenToProducts();
+  listenToBanksForPayment();
   wireStaticUI();
+  wirePaymentBuilder();
   setInterval(checkOfflineLockout, 15000);
   checkOfflineLockout();
 })();
@@ -58,6 +61,21 @@ function listenToProducts() {
         showToast("Couldn't load products. Check your connection.", "danger");
       }
     );
+}
+
+/* ----- Banks (for mobile withdrawal payment) ---------------------------------- */
+function listenToBanksForPayment() {
+  db.collection("banks")
+    .orderBy("name")
+    .onSnapshot((snap) => {
+      allBanksForPayment = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const select = document.getElementById("withdrawalBankSelect");
+      const current = select.value;
+      select.innerHTML =
+        `<option value="">Select a bank…</option>` +
+        allBanksForPayment.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join("");
+      if ([...select.options].some((o) => o.value === current)) select.value = current;
+    });
 }
 
 /* ----- Category chips --------------------------------------------------------- */
@@ -333,6 +351,8 @@ function renderBasket() {
   const linesEl = document.getElementById("basketLines");
   const emptyEl = document.getElementById("basketEmpty");
 
+  if (basket.length === 0) paymentLines = [];
+
   linesEl.querySelectorAll(".basket-line").forEach((el) => el.remove());
 
   if (basket.length === 0) {
@@ -358,7 +378,6 @@ function renderBasket() {
   }
 
   updateTotals();
-  document.getElementById("completeSaleBtn").disabled = basket.length === 0;
 }
 
 document.getElementById("basketLines").addEventListener("click", (e) => {
@@ -387,6 +406,21 @@ function getSubtotal() {
   return basket.reduce((sum, l) => sum + l.lineTotal, 0);
 }
 
+function getTotal() {
+  const subtotal = getSubtotal();
+  const discountRaw = parseFloat(document.getElementById("discountInput").value) || 0;
+  const discount = Math.max(0, Math.min(discountRaw, subtotal));
+  return Math.max(0, roundKsh(subtotal - discount));
+}
+
+function getPaidSoFar() {
+  return paymentLines.reduce((sum, l) => sum + l.amount, 0);
+}
+
+function getRemaining() {
+  return Math.max(0, roundKsh(getTotal() - getPaidSoFar()));
+}
+
 function updateTotals() {
   const subtotal = getSubtotal();
   const discountRaw = parseFloat(document.getElementById("discountInput").value) || 0;
@@ -395,16 +429,149 @@ function updateTotals() {
 
   document.getElementById("subtotalValue").textContent = formatKsh(subtotal);
   document.getElementById("totalValue").textContent = formatKsh(total);
+
+  // Changing the discount/basket after payment lines were already added could make
+  // them overshoot the new total — clear them rather than leave a stale, wrong split.
+  if (getPaidSoFar() > total) {
+    paymentLines = [];
+  }
+  renderPaymentUI();
 }
 
-/* ----- Payment method toggle ----------------------------------------------------------- */
-document.querySelectorAll(".payment-btn").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".payment-btn").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    selectedPaymentMethod = btn.dataset.method;
+/* ----- Split payment builder ----------------------------------------------------------- */
+function renderPaymentUI() {
+  const remaining = getRemaining();
+  const remainingEl = document.getElementById("paymentRemaining");
+  remainingEl.textContent = `Remaining: ${formatKsh(remaining)}`;
+  remainingEl.classList.toggle("zero", remaining === 0);
+
+  // Render the added lines.
+  const linesWrap = document.getElementById("paymentLinesList");
+  linesWrap.innerHTML = paymentLines
+    .map((l) => {
+      let label;
+      if (l.method === "cash") label = `💵 Cash — ${formatKsh(l.amount)}`;
+      else if (l.method === "mobile_transfer") label = `📲 ${l.channel === "manager" ? "Manager" : "Shop"} M-Pesa — ${formatKsh(l.amount)}`;
+      else label = `🏧 ${escapeHtml(l.bankName)} withdrawal — ${formatKsh(l.withdrawalAmount)} (${formatKsh(l.appliedToSale)} to sale${l.changeGiven > 0 ? `, ${formatKsh(l.changeGiven)} change` : ""})`;
+      return `<div class="payment-line"><span>${label}</span><button type="button" class="payment-line-remove" data-remove-payment="${l.lineId}">✕</button></div>`;
+    })
+    .join("");
+
+  // Each method can only be used once per sale — disable buttons already used,
+  // and hide the whole picker once the sale is fully paid.
+  const usedMethods = new Set(paymentLines.map((l) => l.method));
+  document.querySelectorAll("#paymentMethodPicker .payment-btn").forEach((btn) => {
+    btn.disabled = usedMethods.has(btn.dataset.method) || remaining === 0;
   });
+  document.getElementById("paymentMethodPicker").classList.toggle("hidden", remaining === 0);
+
+  document.getElementById("completeSaleBtn").disabled = basket.length === 0 || remaining !== 0 || isOfflineLockedOut();
+}
+
+document.getElementById("paymentLinesList").addEventListener("click", (e) => {
+  const lineId = e.target.dataset.removePayment;
+  if (!lineId) return;
+  paymentLines = paymentLines.filter((l) => l.lineId !== lineId);
+  renderPaymentUI();
 });
+
+function wirePaymentBuilder() {
+  const cashEntry = document.getElementById("cashEntry");
+  const transferEntry = document.getElementById("transferEntry");
+  const withdrawalEntry = document.getElementById("withdrawalEntry");
+  const picker = document.getElementById("paymentMethodPicker");
+
+  function closeAllEntries() {
+    cashEntry.classList.add("hidden");
+    transferEntry.classList.add("hidden");
+    withdrawalEntry.classList.add("hidden");
+    picker.classList.remove("hidden-by-entry");
+  }
+
+  document.querySelectorAll("#paymentMethodPicker .payment-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      closeAllEntries();
+      const remaining = getRemaining();
+      if (btn.dataset.method === "cash") {
+        document.getElementById("cashAmountInput").value = remaining;
+        cashEntry.classList.remove("hidden");
+      } else if (btn.dataset.method === "mobile_transfer") {
+        document.getElementById("transferAmountInput").value = remaining;
+        document.querySelectorAll(".channel-btn").forEach((c) => c.classList.toggle("active", c.dataset.channel === "shop"));
+        transferEntry.classList.remove("hidden");
+      } else {
+        document.getElementById("withdrawalBankSelect").value = "";
+        document.getElementById("withdrawalAmountInput").value = "";
+        document.getElementById("withdrawalSplitHint").textContent = "";
+        withdrawalEntry.classList.remove("hidden");
+      }
+    });
+  });
+
+  // Cash entry
+  document.getElementById("cashEntryCancel").addEventListener("click", closeAllEntries);
+  document.getElementById("cashEntryAdd").addEventListener("click", () => {
+    const amount = roundKsh(parseFloat(document.getElementById("cashAmountInput").value) || 0);
+    if (amount <= 0) { showToast("Enter an amount.", "warning"); return; }
+    if (amount > getRemaining()) { showToast(`That's more than the remaining ${formatKsh(getRemaining())}.`, "warning"); return; }
+    paymentLines.push({ lineId: "p" + Date.now(), method: "cash", amount });
+    closeAllEntries();
+    renderPaymentUI();
+  });
+
+  // Mobile transfer entry
+  document.querySelectorAll(".channel-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".channel-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+  document.getElementById("transferEntryCancel").addEventListener("click", closeAllEntries);
+  document.getElementById("transferEntryAdd").addEventListener("click", () => {
+    const amount = roundKsh(parseFloat(document.getElementById("transferAmountInput").value) || 0);
+    const channel = document.querySelector(".channel-btn.active")?.dataset.channel || "shop";
+    if (amount <= 0) { showToast("Enter an amount.", "warning"); return; }
+    if (amount > getRemaining()) { showToast(`That's more than the remaining ${formatKsh(getRemaining())}.`, "warning"); return; }
+    paymentLines.push({ lineId: "p" + Date.now(), method: "mobile_transfer", amount, channel });
+    closeAllEntries();
+    renderPaymentUI();
+  });
+
+  // Mobile withdrawal entry
+  const withdrawalAmountInput = document.getElementById("withdrawalAmountInput");
+  withdrawalAmountInput.addEventListener("input", () => {
+    const withdrawn = roundKsh(parseFloat(withdrawalAmountInput.value) || 0);
+    const remaining = getRemaining();
+    const applied = Math.min(withdrawn, remaining);
+    const change = withdrawn - applied;
+    const hint = document.getElementById("withdrawalSplitHint");
+    hint.textContent = withdrawn > 0 ? `${formatKsh(applied)} goes to this sale${change > 0 ? `, ${formatKsh(change)} handed to the customer as change` : ""}.` : "";
+  });
+  document.getElementById("withdrawalEntryCancel").addEventListener("click", closeAllEntries);
+  document.getElementById("withdrawalEntryAdd").addEventListener("click", () => {
+    const bankId = document.getElementById("withdrawalBankSelect").value;
+    const bank = allBanksForPayment.find((b) => b.id === bankId);
+    const withdrawn = roundKsh(parseFloat(withdrawalAmountInput.value) || 0);
+    if (!bank) { showToast("Select a bank.", "warning"); return; }
+    if (withdrawn <= 0) { showToast("Enter the amount withdrawn.", "warning"); return; }
+    const remaining = getRemaining();
+    const applied = Math.min(withdrawn, remaining);
+    const change = withdrawn - applied;
+    paymentLines.push({
+      lineId: "p" + Date.now(),
+      method: "mobile_withdrawal",
+      amount: applied, // counts toward the sale total like other methods
+      bankId: bank.id,
+      bankName: bank.name,
+      bankCode: bank.code,
+      withdrawalAmount: withdrawn,
+      appliedToSale: applied,
+      changeGiven: change,
+    });
+    closeAllEntries();
+    renderPaymentUI();
+  });
+}
 
 /* ----- Offline lockout ------------------------------------------------------------------- */
 function checkOfflineLockout() {
@@ -414,14 +581,14 @@ function checkOfflineLockout() {
     document.getElementById("completeSaleBtn").disabled = true;
   } else {
     overlay.classList.add("hidden");
-    if (basket.length > 0) document.getElementById("completeSaleBtn").disabled = false;
+    renderPaymentUI();
   }
 }
 document.getElementById("offlineRetryBtn").addEventListener("click", checkOfflineLockout);
 
 /* ----- Complete sale --------------------------------------------------------------------- */
 document.getElementById("completeSaleBtn").addEventListener("click", async () => {
-  if (basket.length === 0) return;
+  if (basket.length === 0 || getRemaining() !== 0) return;
   if (isOfflineLockedOut()) {
     checkOfflineLockout();
     return;
@@ -437,21 +604,43 @@ document.getElementById("completeSaleBtn").addEventListener("click", async () =>
   const total = Math.max(0, roundKsh(subtotal - discount));
   const customerName = document.getElementById("customerNameInput").value.trim();
 
-  // Aggregate deductions per product (basket may have multiple lines for the same product).
+  // Aggregate stock deductions per product (basket may have multiple lines for the same product).
   const deductionsByProduct = {};
   basket.forEach((line) => {
     deductionsByProduct[line.productId] = (deductionsByProduct[line.productId] || 0) + line.minorUnitsDeducted;
   });
   const productIds = Object.keys(deductionsByProduct);
 
+  // Cash contributed to today's till: plain cash lines + the applied portion of any
+  // mobile-withdrawal line (that money is being treated as a cash sale, per the
+  // agreed model, even though it physically came out of the withdrawal-cash pool).
+  const withdrawalLines = paymentLines.filter((l) => l.method === "mobile_withdrawal");
+  const cashContribution = paymentLines
+    .filter((l) => l.method === "cash")
+    .reduce((sum, l) => sum + l.amount, 0) +
+    withdrawalLines.reduce((sum, l) => sum + l.appliedToSale, 0);
+  const needsMoneyPool = cashContribution > 0 || withdrawalLines.length > 0;
+
+  const todayStr = formatDateInput(new Date());
+  const poolRef = db.collection("moneyPools").doc("main");
+
   try {
     const receiptNumber = await getNextReceiptNumber();
     const saleRef = db.collection("sales").doc();
+    // At most one mobile-withdrawal line per sale (enforced in the UI), so at most
+    // one linked cashTransactions doc + one bank sequence bump per sale.
+    const withdrawalLine = withdrawalLines[0] || null;
+    const bankRef = withdrawalLine ? db.collection("banks").doc(withdrawalLine.bankId) : null;
+    const cashTxRef = withdrawalLine ? db.collection("cashTransactions").doc() : null;
 
-    const lowStockItems = await db.runTransaction(async (t) => {
+    const result = await db.runTransaction(async (t) => {
+      // ---- Reads first (Firestore transaction rule) ----
       const productRefs = productIds.map((id) => db.collection("products").doc(id));
       const productDocs = await Promise.all(productRefs.map((ref) => t.get(ref)));
+      const poolDoc = needsMoneyPool ? await t.get(poolRef) : null;
+      const bankDoc = bankRef ? await t.get(bankRef) : null;
 
+      // ---- Stock deduction + low-stock detection (unchanged logic) ----
       const lowStock = [];
       productDocs.forEach((doc, i) => {
         const id = productIds[i];
@@ -468,6 +657,71 @@ document.getElementById("completeSaleBtn").addEventListener("click", async () =>
         }
       });
 
+      // ---- Money pool updates (float / withdrawal cash / today's sales cash) ----
+      const lowBalance = [];
+      if (needsMoneyPool) {
+        if (!poolDoc.exists) throw new Error("Float/cash balances haven't been set up yet — ask the manager to set opening balances in Deposit/Withdraw.");
+        const pool = poolDoc.data();
+        const sameDay = pool.salesCashDate === todayStr;
+        let salesCashToday = sameDay ? pool.salesCashToday || 0 : 0;
+        let salesCashDeductedToday = sameDay ? pool.salesCashDeductedToday || 0 : 0;
+        let float = pool.float || 0;
+        let withdrawalCash = pool.withdrawalCash || 0;
+
+        if (withdrawalLine) {
+          if (!bankDoc.exists) throw new Error("That bank no longer exists.");
+          const withdrawn = withdrawalLine.withdrawalAmount;
+          const availableFromSalesCash = salesCashToday - salesCashDeductedToday;
+          let fundedFromSalesCash = 0;
+          if (withdrawn <= withdrawalCash) {
+            withdrawalCash -= withdrawn;
+          } else {
+            const shortfall = withdrawn - withdrawalCash;
+            if (shortfall > availableFromSalesCash + 0.0001) {
+              throw new Error("Not enough withdrawal cash or today's sales cash to cover this withdrawal.");
+            }
+            fundedFromSalesCash = shortfall;
+            salesCashDeductedToday += shortfall;
+            withdrawalCash = 0;
+          }
+          float += withdrawn;
+
+          const nextSeq = (bankDoc.data().seqCounter || 0) + 1;
+          const transactionNumber = String(nextSeq).padStart(4, "0") + withdrawalLine.bankCode;
+          t.update(bankRef, { seqCounter: nextSeq });
+          t.set(cashTxRef, {
+            type: "withdrawal",
+            bankId: withdrawalLine.bankId,
+            bankName: withdrawalLine.bankName,
+            bankCode: withdrawalLine.bankCode,
+            amount: withdrawn,
+            fundedFromSalesCash,
+            customerName: customerName || null,
+            transactionNumber,
+            source: "pos",
+            linkedSaleId: saleRef.id,
+            enteredBy: currentUser.uid,
+            enteredByName: currentUser.displayName,
+            enteredByRole: currentUser.role,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Plain cash lines, plus the applied portion of the withdrawal, count as
+        // today's till cash from sales.
+        salesCashToday += cashContribution;
+
+        t.set(
+          poolRef,
+          { float, withdrawalCash, salesCashToday, salesCashDate: todayStr, salesCashDeductedToday },
+          { merge: true }
+        );
+
+        if (float <= (businessInfo.floatCashLowThreshold ?? 3000)) lowBalance.push({ label: "Float", remaining: float });
+        if (withdrawalCash <= (businessInfo.floatCashLowThreshold ?? 3000)) lowBalance.push({ label: "Withdrawal cash", remaining: withdrawalCash });
+      }
+
+      // ---- The sale itself ----
       t.set(saleRef, {
         receiptNumber,
         servedBy: currentUser.uid,
@@ -483,44 +737,59 @@ document.getElementById("completeSaleBtn").addEventListener("click", async () =>
           pricePerUnitSold: l.pricePerUnitSold,
           lineTotal: l.lineTotal,
         })),
+        payments: paymentLines.map((l) => ({
+          method: l.method,
+          amount: l.amount,
+          channel: l.channel || null,
+          bankId: l.bankId || null,
+          bankName: l.bankName || null,
+          bankCode: l.bankCode || null,
+          withdrawalAmount: l.withdrawalAmount || null,
+          appliedToSale: l.appliedToSale || null,
+          changeGiven: l.changeGiven || null,
+        })),
         subtotal: roundKsh(subtotal),
         discount: roundKsh(discount),
         total,
-        paymentMethod: selectedPaymentMethod,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
       });
 
-      return lowStock;
+      return { lowStock, lowBalance };
     });
 
-    showReceipt({ receiptNumber, customerName, total, subtotal, discount, items: basket, paymentMethod: selectedPaymentMethod, servedByName: currentUser.displayName, servedByRole: currentUser.role });
+    showReceipt({ receiptNumber, customerName, total, subtotal, discount, items: basket, payments: paymentLines, servedByName: currentUser.displayName, servedByRole: currentUser.role });
 
     basket = [];
+    paymentLines = [];
     document.getElementById("discountInput").value = 0;
     document.getElementById("customerNameInput").value = "";
     renderBasket();
     renderProductGrid();
 
-    if (lowStockItems.length > 0) {
-      showLowStockAlert(lowStockItems);
+    if (result.lowStock.length > 0 || result.lowBalance.length > 0) {
+      showLowStockAlert(result.lowStock, result.lowBalance);
     }
   } catch (err) {
     console.error(err);
     showToast(err.message || "Couldn't complete the sale. Please try again.", "danger");
   } finally {
     btn.textContent = "Complete sale";
-    btn.disabled = basket.length === 0;
+    renderPaymentUI();
   }
 });
 
+
 /* ----- Low stock alert modal --------------------------------------------------------------- */
-function showLowStockAlert(items) {
+function showLowStockAlert(stockItems, balanceItems) {
+  stockItems = stockItems || [];
+  balanceItems = balanceItems || [];
   const list = document.getElementById("lowStockList");
-  list.innerHTML = items
-    .map((item) => `<li>${escapeHtml(item.name)} — ${roundKsh(item.remaining)} ${escapeHtml(item.unitLabel)} left</li>`)
-    .join("");
+  list.innerHTML =
+    stockItems.map((item) => `<li>${escapeHtml(item.name)} — ${roundKsh(item.remaining)} ${escapeHtml(item.unitLabel)} left</li>`).join("") +
+    balanceItems.map((item) => `<li>${escapeHtml(item.label)} balance is low — ${formatKsh(item.remaining)} left</li>`).join("");
+  const total = stockItems.length + balanceItems.length;
   document.getElementById("lowStockMessage").textContent =
-    items.length === 1 ? "One item just dropped to its low stock threshold." : `${items.length} items just dropped to their low stock threshold.`;
+    total === 1 ? "One thing just dropped to its low alert threshold." : `${total} things just dropped to their low alert threshold.`;
   document.getElementById("lowStockOverlay").classList.remove("hidden");
 }
 document.getElementById("lowStockDismiss").addEventListener("click", () => {
@@ -528,6 +797,12 @@ document.getElementById("lowStockDismiss").addEventListener("click", () => {
 });
 
 /* ----- Receipt ------------------------------------------------------------------------------- */
+function paymentLineReceiptLabel(l) {
+  if (l.method === "cash") return `Cash — ${formatKsh(l.amount)}`;
+  if (l.method === "mobile_transfer") return `${l.channel === "manager" ? "Manager" : "Shop"} M-Pesa — ${formatKsh(l.amount)}`;
+  return `${l.bankName} withdrawal — ${formatKsh(l.appliedToSale)}${l.changeGiven > 0 ? ` (+${formatKsh(l.changeGiven)} change given)` : ""}`;
+}
+
 function showReceipt(sale) {
   const area = document.getElementById("receiptPrintArea");
   const dateStr = formatDateTime(new Date());
@@ -540,6 +815,10 @@ function showReceipt(sale) {
           <span>${formatKsh(l.lineTotal)}</span>
         </div>`
     )
+    .join("");
+
+  const paymentRows = (sale.payments || [])
+    .map((l) => `<div class="receipt-row"><span>${escapeHtml(paymentLineReceiptLabel(l))}</span></div>`)
     .join("");
 
   area.innerHTML = `
@@ -559,7 +838,8 @@ function showReceipt(sale) {
     <div class="receipt-row"><span>Subtotal</span><span>${formatKsh(sale.subtotal)}</span></div>
     <div class="receipt-row"><span>Discount</span><span>${formatKsh(sale.discount)}</span></div>
     <div class="receipt-row receipt-total-row"><span>TOTAL</span><span>${formatKsh(sale.total)}</span></div>
-    <div class="receipt-row"><span>Payment</span><span>${sale.paymentMethod === "cash" ? "Cash" : "Mobile"}</span></div>
+    <div class="receipt-divider"></div>
+    ${paymentRows}
     <div class="receipt-divider"></div>
     <div class="receipt-center">Thank you for your business!</div>
   `;
