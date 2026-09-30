@@ -61,8 +61,10 @@
           <label for="paymentFilterSelect">Payment method</label>
           <select id="paymentFilterSelect">
             <option value="all">All</option>
-            <option value="cash">Cash</option>
-            <option value="mobile">Mobile</option>
+            <option value="cash">Includes cash</option>
+            <option value="shop_mpesa">Includes Shop M-Pesa</option>
+            <option value="manager_mpesa">Includes Manager M-Pesa</option>
+            <option value="mobile_withdrawal">Includes mobile withdrawal</option>
           </select>
         </div>
         <div class="quick-ranges">
@@ -89,13 +91,23 @@
         <span class="summary-value" id="summaryCount">0</span>
       </div>
       <div class="card summary-card">
-        <span class="summary-label">Cash</span>
+        <span class="summary-label">Cash sales</span>
         <span class="summary-value cash-value" id="summaryCash">KSh 0</span>
       </div>
       <div class="card summary-card">
-        <span class="summary-label">Mobile</span>
-        <span class="summary-value mobile-value" id="summaryMobile">KSh 0</span>
+        <span class="summary-label">Shop M-Pesa</span>
+        <span class="summary-value mobile-value" id="summaryShopMpesa">KSh 0</span>
       </div>
+      <div class="card summary-card">
+        <span class="summary-label">Manager M-Pesa</span>
+        <span class="summary-value mobile-value" id="summaryManagerMpesa">KSh 0</span>
+      </div>
+    </div>
+
+    <div class="card cash-reconcile-card hidden" id="cashReconcileCard">
+      <div class="reconcile-row"><span>Cash sales (gross)</span><span id="reconcileGross">KSh 0</span></div>
+      <div class="reconcile-row"><span>Less: withdrawals funded from today's sales cash</span><span id="reconcileDeducted">− KSh 0</span></div>
+      <div class="reconcile-row reconcile-net"><span>Net cash in the till</span><span id="reconcileNet">KSh 0</span></div>
     </div>
 
     <div class="table-scroll">
