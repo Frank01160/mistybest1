@@ -82,6 +82,25 @@
 .cash-value { color: var(--color-payment-cash); }
 .mobile-value { color: var(--color-payment-mobile); }
 
+.cash-reconcile-card {
+  padding: var(--space-md) var(--space-lg);
+  margin-bottom: var(--space-lg);
+  max-width: 480px;
+}
+.reconcile-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  padding: var(--space-2xs) 0;
+}
+.reconcile-net {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  border-top: 1px dashed var(--color-border-strong);
+  padding-top: var(--space-xs);
+  margin-top: var(--space-2xs);
+}
+
 .sale-row { cursor: pointer; }
 
 #saleDetailModal { max-width: 420px; }
