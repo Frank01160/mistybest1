@@ -5,6 +5,7 @@
 let repUser = null;
 let allSales = [];
 let filteredSales = [];
+let allCashTx = [];
 let businessInfoR = { companyName: "Misty Code" };
 
 (async function init() {
@@ -20,7 +21,29 @@ let businessInfoR = { companyName: "Misty Code" };
   wireExports();
   wireSaleDetail();
   listenToSales();
+  listenToCashTx();
 })();
+
+/* ----- Normalizing payments: new split-payment sales use `payments[]`;
+   sales made before this feature only have a single `paymentMethod` +
+   `total`. This turns either shape into the same array so every other
+   function below can stay simple. Per the agreed default, old "mobile"
+   sales count as Shop M-Pesa. ---------------------------------------------- */
+function getSalePayments(sale) {
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) return sale.payments;
+  if (sale.paymentMethod === "cash") return [{ method: "cash", amount: sale.total || 0 }];
+  return [{ method: "mobile_transfer", channel: "shop", amount: sale.total || 0 }];
+}
+
+function paymentSummaryLabel(sale) {
+  return getSalePayments(sale)
+    .map((p) => {
+      if (p.method === "cash") return `Cash ${formatKsh(p.amount)}`;
+      if (p.method === "mobile_transfer") return `${p.channel === "manager" ? "Manager" : "Shop"} M-Pesa ${formatKsh(p.amount)}`;
+      return `${p.bankName || "Withdrawal"} ${formatKsh(p.amount)}`;
+    })
+    .join(" + ");
+}
 
 function setDefaultDateRange(range) {
   const now = new Date();
@@ -40,20 +63,19 @@ function setDefaultDateRange(range) {
 }
 
 function wireFilters() {
-  document.getElementById("fromDateInput").addEventListener("change", applyFilters);
-  document.getElementById("toDateInput").addEventListener("change", applyFilters);
+  document.getElementById("fromDateInput").addEventListener("change", () => { applyFilters(); applyCashTxFilter(); });
+  document.getElementById("toDateInput").addEventListener("change", () => { applyFilters(); applyCashTxFilter(); });
   document.getElementById("paymentFilterSelect").addEventListener("change", applyFilters);
   document.querySelectorAll("[data-range]").forEach((btn) => {
     btn.addEventListener("click", () => {
       setDefaultDateRange(btn.dataset.range);
       applyFilters();
+      applyCashTxFilter();
     });
   });
 }
 
 function listenToSales() {
-  // Listen to a generous recent window client-side filtered further by the date pickers,
-  // to keep this simple and avoid composite-index requirements.
   db.collection("sales")
     .orderBy("createdAt", "desc")
     .limit(2000)
@@ -69,6 +91,39 @@ function listenToSales() {
     );
 }
 
+/* Separately tracks how much of today's/any day's sales cash got claimed by
+   withdrawals that ran short of the standalone withdrawal-cash pool — used
+   only for the reconciliation line, independent of the sales query above. */
+function listenToCashTx() {
+  db.collection("cashTransactions")
+    .orderBy("createdAt", "desc")
+    .limit(2000)
+    .onSnapshot(
+      (snap) => {
+        allCashTx = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        applyCashTxFilter();
+      },
+      (err) => console.error(err)
+    );
+}
+
+let filteredDeductedFromSalesCash = 0;
+function applyCashTxFilter() {
+  const fromVal = document.getElementById("fromDateInput").value;
+  const toVal = document.getElementById("toDateInput").value;
+  filteredDeductedFromSalesCash = allCashTx
+    .filter((tx) => {
+      if (tx.type !== "withdrawal" || !(tx.fundedFromSalesCash > 0)) return false;
+      if (!tx.createdAt) return false;
+      const d = tx.createdAt.toDate();
+      if (fromVal && d < startOfDay(fromVal)) return false;
+      if (toVal && d > endOfDay(toVal)) return false;
+      return true;
+    })
+    .reduce((sum, tx) => sum + tx.fundedFromSalesCash, 0);
+  renderReconcileCard();
+}
+
 function applyFilters() {
   const fromVal = document.getElementById("fromDateInput").value;
   const toVal = document.getElementById("toDateInput").value;
@@ -79,7 +134,16 @@ function applyFilters() {
     const d = s.createdAt.toDate();
     if (fromVal && d < startOfDay(fromVal)) return false;
     if (toVal && d > endOfDay(toVal)) return false;
-    if (payment !== "all" && s.paymentMethod !== payment) return false;
+
+    if (payment !== "all") {
+      const payments = getSalePayments(s);
+      const matches =
+        (payment === "cash" && payments.some((p) => p.method === "cash")) ||
+        (payment === "shop_mpesa" && payments.some((p) => p.method === "mobile_transfer" && p.channel === "shop")) ||
+        (payment === "manager_mpesa" && payments.some((p) => p.method === "mobile_transfer" && p.channel === "manager")) ||
+        (payment === "mobile_withdrawal" && payments.some((p) => p.method === "mobile_withdrawal"));
+      if (!matches) return false;
+    }
     return true;
   });
 
@@ -89,13 +153,37 @@ function applyFilters() {
 
 function renderSummary() {
   const total = filteredSales.reduce((sum, s) => sum + (s.total || 0), 0);
-  const cash = filteredSales.filter((s) => s.paymentMethod === "cash").reduce((sum, s) => sum + (s.total || 0), 0);
-  const mobile = filteredSales.filter((s) => s.paymentMethod === "mobile").reduce((sum, s) => sum + (s.total || 0), 0);
+  let cash = 0, shopMpesa = 0, managerMpesa = 0;
+
+  filteredSales.forEach((s) => {
+    getSalePayments(s).forEach((p) => {
+      if (p.method === "cash" || p.method === "mobile_withdrawal") cash += p.amount || 0;
+      else if (p.method === "mobile_transfer" && p.channel === "manager") managerMpesa += p.amount || 0;
+      else if (p.method === "mobile_transfer") shopMpesa += p.amount || 0;
+    });
+  });
 
   document.getElementById("summaryTotal").textContent = formatKsh(total);
   document.getElementById("summaryCount").textContent = filteredSales.length;
   document.getElementById("summaryCash").textContent = formatKsh(cash);
-  document.getElementById("summaryMobile").textContent = formatKsh(mobile);
+  document.getElementById("summaryShopMpesa").textContent = formatKsh(shopMpesa);
+  document.getElementById("summaryManagerMpesa").textContent = formatKsh(managerMpesa);
+
+  filteredCashGross = cash;
+  renderReconcileCard();
+}
+
+let filteredCashGross = 0;
+function renderReconcileCard() {
+  const card = document.getElementById("cashReconcileCard");
+  if (filteredCashGross === 0 && filteredDeductedFromSalesCash === 0) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  document.getElementById("reconcileGross").textContent = formatKsh(filteredCashGross);
+  document.getElementById("reconcileDeducted").textContent = `− ${formatKsh(filteredDeductedFromSalesCash)}`;
+  document.getElementById("reconcileNet").textContent = formatKsh(Math.max(0, filteredCashGross - filteredDeductedFromSalesCash));
 }
 
 function renderTable() {
@@ -111,7 +199,7 @@ function renderTable() {
 
   tbody.innerHTML = filteredSales
     .map((s) => {
-      const itemCount = (s.items || []).reduce((sum, i) => sum + 1, 0);
+      const itemCount = (s.items || []).length;
       return `
       <tr class="sale-row" data-sale-id="${s.id}">
         <td>${escapeHtml(s.receiptNumber || "—")}</td>
@@ -120,7 +208,7 @@ function renderTable() {
         <td>${itemCount} item${itemCount === 1 ? "" : "s"}</td>
         <td>${formatKsh(s.discount || 0)}</td>
         <td>${formatKsh(s.total || 0)}</td>
-        <td><span class="badge ${s.paymentMethod === "cash" ? "badge-cash" : "badge-mobile"}">${s.paymentMethod === "cash" ? "Cash" : "Mobile"}</span></td>
+        <td>${escapeHtml(paymentSummaryLabel(s))}</td>
         <td><span class="badge ${s.servedByRole === "manager" ? "badge-manager" : "badge-seller"}">${escapeHtml(s.servedByName || "—")}</span></td>
       </tr>`;
     })
@@ -152,6 +240,13 @@ function openSaleDetail(sale) {
     )
     .join("");
 
+  const paymentLines = getSalePayments(sale)
+    .map((p) => {
+      const label = p.method === "cash" ? "Cash" : p.method === "mobile_transfer" ? `${p.channel === "manager" ? "Manager" : "Shop"} M-Pesa` : `${p.bankName || "Withdrawal"} (mobile withdrawal)`;
+      return `<div class="sale-detail-line"><span>${escapeHtml(label)}</span><span>${formatKsh(p.amount)}</span></div>`;
+    })
+    .join("");
+
   document.getElementById("saleDetailBody").innerHTML = `
     <div class="sale-detail-line"><span>Date</span><span>${sale.createdAt ? formatDateTime(sale.createdAt.toDate()) : "—"}</span></div>
     <div class="sale-detail-line"><span>Customer</span><span>${escapeHtml(sale.customerName || "Walk-in")}</span></div>
@@ -162,7 +257,8 @@ function openSaleDetail(sale) {
     <div class="sale-detail-line"><span>Subtotal</span><span>${formatKsh(sale.subtotal)}</span></div>
     <div class="sale-detail-line"><span>Discount</span><span>${formatKsh(sale.discount)}</span></div>
     <div class="sale-detail-line" style="font-weight:600;"><span>Total</span><span>${formatKsh(sale.total)}</span></div>
-    <div class="sale-detail-line"><span>Payment</span><span>${sale.paymentMethod === "cash" ? "Cash" : "Mobile"}</span></div>
+    <div class="sale-detail-divider"></div>
+    ${paymentLines}
   `;
   document.getElementById("saleDetailOverlay").classList.remove("hidden");
 }
@@ -188,7 +284,7 @@ function exportCsv() {
       s.subtotal,
       s.discount,
       s.total,
-      s.paymentMethod,
+      paymentSummaryLabel(s),
       s.servedByName,
     ]);
   });
@@ -221,7 +317,7 @@ function exportPdf() {
     (s.items || []).length,
     formatKsh(s.discount || 0),
     formatKsh(s.total || 0),
-    s.paymentMethod === "cash" ? "Cash" : "Mobile",
+    paymentSummaryLabel(s),
     s.servedByName || "",
   ]);
 
