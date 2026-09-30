@@ -1,5 +1,6 @@
 /* ==========================================================================
-   WITHDRAWALS.JS — Deposit / Withdraw logic
+   WITHDRAWALS.JS — Deposit / Withdraw logic, now tied to the Float and
+   Withdrawal-cash pools shared with the POS.
    ========================================================================== */
 
 let wdUser = null;
@@ -8,15 +9,24 @@ let allTransactions = [];
 let filteredTransactions = [];
 let selectedWdType = "deposit";
 let activeBankFilter = "all";
+let moneyPool = { float: 0, withdrawalCash: 0, salesCashToday: 0, salesCashDate: "", salesCashDeductedToday: 0 };
+let lowThreshold = 3000;
+let adjustPool = "float";
+let adjustDir = "add";
+let pendingConfirmAction = null; // { kind: "transaction" | "adjustment", ...details }
 
 (async function init() {
   wdUser = await requireAuth(["seller", "manager"]);
   wireTabs();
   wireEntryForm();
+  wireAdjustForm();
   wireConfirmModal();
+  wireLowBalanceModal();
   wireHistoryFilters();
   wireExports();
   listenToBanks();
+  listenToMoneyPool();
+  listenToThreshold();
   setDefaultHistoryRange();
   listenToTransactions();
 })();
@@ -31,6 +41,42 @@ function wireTabs() {
       document.getElementById(`panel-${btn.dataset.tab}`).classList.remove("hidden");
     });
   });
+}
+
+/* ----- Money pool (Float / Withdrawal cash) ------------------------------------ */
+function listenToMoneyPool() {
+  db.collection("moneyPools")
+    .doc("main")
+    .onSnapshot((doc) => {
+      if (doc.exists) moneyPool = { ...moneyPool, ...doc.data() };
+      renderBalanceCards();
+    });
+}
+
+function listenToThreshold() {
+  db.collection("businessConfig")
+    .doc("main")
+    .onSnapshot((doc) => {
+      if (doc.exists && typeof doc.data().floatCashLowThreshold === "number") {
+        lowThreshold = doc.data().floatCashLowThreshold;
+      }
+      renderBalanceCards();
+    });
+}
+
+function renderBalanceCards() {
+  const floatEl = document.getElementById("floatBalanceValue");
+  const cashEl = document.getElementById("cashBalanceValue");
+  floatEl.textContent = formatKsh(moneyPool.float || 0);
+  cashEl.textContent = formatKsh(moneyPool.withdrawalCash || 0);
+  floatEl.classList.toggle("low", (moneyPool.float || 0) <= lowThreshold);
+  cashEl.classList.toggle("low", (moneyPool.withdrawalCash || 0) <= lowThreshold);
+}
+
+function getAvailableFromSalesCashToday() {
+  const todayStr = formatDateInput(new Date());
+  if (moneyPool.salesCashDate !== todayStr) return 0;
+  return (moneyPool.salesCashToday || 0) - (moneyPool.salesCashDeductedToday || 0);
 }
 
 /* ----- Banks (read-only here; managed in Manager → Banks) -------------------- */
@@ -77,11 +123,11 @@ document.getElementById("bankChips").addEventListener("click", (e) => {
   if (e.target.dataset.bank === "all") setBankFilter("all");
 });
 
-/* ----- Entry form -------------------------------------------------------------- */
+/* ----- Entry form (deposit / withdrawal) --------------------------------------- */
 function wireEntryForm() {
-  document.querySelectorAll(".wd-type-btn").forEach((btn) => {
+  document.querySelectorAll("#panel-entry .wd-type-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document.querySelectorAll(".wd-type-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll("#panel-entry .wd-type-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       selectedWdType = btn.dataset.wdType;
     });
@@ -90,7 +136,7 @@ function wireEntryForm() {
   document.getElementById("wdBankSelect").addEventListener("change", validateEntryForm);
   document.getElementById("wdAmountInput").addEventListener("input", validateEntryForm);
 
-  document.getElementById("wdSubmitBtn").addEventListener("click", openConfirmModal);
+  document.getElementById("wdSubmitBtn").addEventListener("click", openTransactionConfirm);
 }
 
 function validateEntryForm() {
@@ -100,20 +146,33 @@ function validateEntryForm() {
   document.getElementById("wdSubmitBtn").disabled = !valid;
 }
 
-/* ----- Confirm modal ------------------------------------------------------------ */
-function wireConfirmModal() {
-  document.getElementById("wdConfirmClose").addEventListener("click", closeConfirmModal);
-  document.getElementById("wdConfirmCancel").addEventListener("click", closeConfirmModal);
-  document.getElementById("wdConfirmSave").addEventListener("click", saveTransaction);
-}
-
-function openConfirmModal() {
+function openTransactionConfirm() {
   const bankId = document.getElementById("wdBankSelect").value;
   const bank = wdBanks.find((b) => b.id === bankId);
   const amount = parseInt(document.getElementById("wdAmountInput").value, 10);
   const customerName = document.getElementById("wdCustomerInput").value.trim();
 
   if (!bank || !amount || amount <= 0) return;
+
+  // Deposits are blocked outright if float can't cover them — checked here for
+  // immediate feedback, and re-checked inside the transaction as the real guard.
+  if (selectedWdType === "deposit" && amount > (moneyPool.float || 0)) {
+    showToast(`Not enough float to cover this deposit. Float is currently ${formatKsh(moneyPool.float || 0)} — ask the manager to top it up first.`, "danger");
+    return;
+  }
+
+  let shortfallNote = "";
+  if (selectedWdType === "withdrawal" && amount > (moneyPool.withdrawalCash || 0)) {
+    const shortfall = amount - (moneyPool.withdrawalCash || 0);
+    const availableFromSales = getAvailableFromSalesCashToday();
+    if (shortfall > availableFromSales + 0.0001) {
+      showToast(`Not enough withdrawal cash or today's sales cash to cover this. Short by ${formatKsh(shortfall - availableFromSales)}.`, "danger");
+      return;
+    }
+    shortfallNote = `<div class="wd-confirm-line" style="color: var(--color-warning);"><span>From today's sales cash</span><span>${formatKsh(shortfall)}</span></div>`;
+  }
+
+  pendingConfirmAction = { kind: "transaction", type: selectedWdType, bank, amount, customerName };
 
   document.getElementById("wdConfirmBody").innerHTML = `
     <div class="wd-confirm-amount" style="color: ${selectedWdType === "deposit" ? "var(--color-success)" : "var(--color-danger)"};">
@@ -122,63 +181,213 @@ function openConfirmModal() {
     <div class="wd-confirm-line"><span>Bank / channel</span><span>${escapeHtml(bank.name)}</span></div>
     <div class="wd-confirm-line"><span>Customer</span><span>${escapeHtml(customerName || "Not provided")}</span></div>
     <div class="wd-confirm-line"><span>Entered by</span><span>${escapeHtml(wdUser.displayName)}</span></div>
+    ${shortfallNote}
   `;
   document.getElementById("wdConfirmOverlay").classList.remove("hidden");
 }
 
-function closeConfirmModal() {
-  document.getElementById("wdConfirmOverlay").classList.add("hidden");
+/* ----- Adjust balance form ------------------------------------------------------- */
+function wireAdjustForm() {
+  document.querySelectorAll("[data-adjust-pool]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-adjust-pool]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      adjustPool = btn.dataset.adjustPool;
+    });
+  });
+  document.querySelectorAll("[data-adjust-dir]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-adjust-dir]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      adjustDir = btn.dataset.adjustDir;
+    });
+  });
+  document.getElementById("adjustSubmitBtn").addEventListener("click", openAdjustConfirm);
 }
 
-async function saveTransaction() {
-  const bankId = document.getElementById("wdBankSelect").value;
-  const bank = wdBanks.find((b) => b.id === bankId);
-  const amount = parseInt(document.getElementById("wdAmountInput").value, 10);
-  const customerName = document.getElementById("wdCustomerInput").value.trim();
+function openAdjustConfirm() {
+  const amount = roundKsh(parseFloat(document.getElementById("adjustAmountInput").value) || 0);
+  const reason = document.getElementById("adjustReasonWdInput").value.trim();
 
-  if (!bank || !amount) return;
+  if (amount <= 0) { showToast("Enter an amount.", "warning"); return; }
+  if (!reason) { showToast("Please add a reason for this adjustment.", "warning"); return; }
 
+  const currentValue = adjustPool === "float" ? (moneyPool.float || 0) : (moneyPool.withdrawalCash || 0);
+  if (adjustDir === "deduct" && amount > currentValue) {
+    showToast(`That's more than the current ${adjustPool === "float" ? "Float" : "Withdrawal cash"} balance (${formatKsh(currentValue)}).`, "danger");
+    return;
+  }
+
+  pendingConfirmAction = { kind: "adjustment", pool: adjustPool, dir: adjustDir, amount, reason };
+
+  document.getElementById("wdConfirmBody").innerHTML = `
+    <div class="wd-confirm-amount" style="color: ${adjustDir === "add" ? "var(--color-success)" : "var(--color-danger)"};">
+      ${adjustDir === "add" ? "+" : "−"} ${formatKsh(amount)} ${adjustPool === "float" ? "Float" : "Withdrawal cash"}
+    </div>
+    <div class="wd-confirm-line"><span>Reason</span><span>${escapeHtml(reason)}</span></div>
+    <div class="wd-confirm-line"><span>New balance</span><span>${formatKsh(adjustDir === "add" ? currentValue + amount : currentValue - amount)}</span></div>
+    <div class="wd-confirm-line"><span>Adjusted by</span><span>${escapeHtml(wdUser.displayName)}</span></div>
+  `;
+  document.getElementById("wdConfirmOverlay").classList.remove("hidden");
+}
+
+/* ----- Confirm modal (shared by both flows above) ------------------------------ */
+function wireConfirmModal() {
+  document.getElementById("wdConfirmClose").addEventListener("click", closeConfirmModal);
+  document.getElementById("wdConfirmCancel").addEventListener("click", closeConfirmModal);
+  document.getElementById("wdConfirmSave").addEventListener("click", saveConfirmedAction);
+}
+
+function closeConfirmModal() {
+  document.getElementById("wdConfirmOverlay").classList.add("hidden");
+  pendingConfirmAction = null;
+}
+
+async function saveConfirmedAction() {
+  if (!pendingConfirmAction) return;
   const saveBtn = document.getElementById("wdConfirmSave");
   saveBtn.disabled = true;
   saveBtn.textContent = "Saving…";
 
   try {
-    const bankRef = db.collection("banks").doc(bank.id);
-    await db.runTransaction(async (t) => {
-      const bankDoc = await t.get(bankRef);
-      if (!bankDoc.exists) throw new Error("This bank no longer exists.");
-      const nextSeq = (bankDoc.data().seqCounter || 0) + 1;
-      const transactionNumber = String(nextSeq).padStart(4, "0") + bank.code;
-
-      t.update(bankRef, { seqCounter: nextSeq });
-      t.set(db.collection("cashTransactions").doc(), {
-        type: selectedWdType,
-        bankId: bank.id,
-        bankName: bank.name,
-        bankCode: bank.code,
-        amount,
-        customerName: customerName || null,
-        transactionNumber,
-        enteredBy: wdUser.uid,
-        enteredByName: wdUser.displayName,
-        enteredByRole: wdUser.role,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      });
-    });
-
-    showToast(`${selectedWdType === "deposit" ? "Deposit" : "Withdrawal"} saved.`, "success");
+    if (pendingConfirmAction.kind === "transaction") {
+      await saveTransaction(pendingConfirmAction);
+      document.getElementById("wdAmountInput").value = "";
+      document.getElementById("wdCustomerInput").value = "";
+      document.getElementById("wdBankSelect").value = "";
+      validateEntryForm();
+    } else {
+      await saveAdjustment(pendingConfirmAction);
+      document.getElementById("adjustAmountInput").value = "";
+      document.getElementById("adjustReasonWdInput").value = "";
+    }
     closeConfirmModal();
-    document.getElementById("wdAmountInput").value = "";
-    document.getElementById("wdCustomerInput").value = "";
-    document.getElementById("wdBankSelect").value = "";
-    validateEntryForm();
   } catch (err) {
     console.error(err);
-    showToast(err.message || "Couldn't save the transaction.", "danger");
+    showToast(err.message || "Couldn't save. Please try again.", "danger");
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = "Confirm";
   }
+}
+
+async function saveTransaction(action) {
+  const { type, bank, amount, customerName } = action;
+  const bankRef = db.collection("banks").doc(bank.id);
+  const poolRef = db.collection("moneyPools").doc("main");
+  const todayStr = formatDateInput(new Date());
+
+  const lowBalance = await db.runTransaction(async (t) => {
+    const bankDoc = await t.get(bankRef);
+    const poolDoc = await t.get(poolRef);
+    if (!bankDoc.exists) throw new Error("This bank no longer exists.");
+
+    const pool = poolDoc.exists ? poolDoc.data() : { float: 0, withdrawalCash: 0 };
+    const sameDay = pool.salesCashDate === todayStr;
+    let salesCashToday = sameDay ? pool.salesCashToday || 0 : 0;
+    let salesCashDeductedToday = sameDay ? pool.salesCashDeductedToday || 0 : 0;
+    let float = pool.float || 0;
+    let withdrawalCash = pool.withdrawalCash || 0;
+    let fundedFromSalesCash = 0;
+
+    if (type === "deposit") {
+      if (amount > float + 0.0001) throw new Error("Not enough float to cover this deposit.");
+      float -= amount;
+      withdrawalCash += amount;
+    } else {
+      if (amount <= withdrawalCash) {
+        withdrawalCash -= amount;
+      } else {
+        const shortfall = amount - withdrawalCash;
+        const availableFromSales = salesCashToday - salesCashDeductedToday;
+        if (shortfall > availableFromSales + 0.0001) {
+          throw new Error("Not enough withdrawal cash or today's sales cash to cover this withdrawal.");
+        }
+        fundedFromSalesCash = shortfall;
+        salesCashDeductedToday += shortfall;
+        withdrawalCash = 0;
+      }
+      float += amount;
+    }
+
+    const nextSeq = (bankDoc.data().seqCounter || 0) + 1;
+    const transactionNumber = String(nextSeq).padStart(4, "0") + bank.code;
+
+    t.update(bankRef, { seqCounter: nextSeq });
+    t.set(poolRef, { float, withdrawalCash, salesCashToday, salesCashDate: todayStr, salesCashDeductedToday }, { merge: true });
+    t.set(db.collection("cashTransactions").doc(), {
+      type,
+      bankId: bank.id,
+      bankName: bank.name,
+      bankCode: bank.code,
+      amount,
+      fundedFromSalesCash,
+      customerName: customerName || null,
+      transactionNumber,
+      source: "standalone",
+      enteredBy: wdUser.uid,
+      enteredByName: wdUser.displayName,
+      enteredByRole: wdUser.role,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const warnings = [];
+    if (float <= lowThreshold) warnings.push({ label: "Float", remaining: float });
+    if (withdrawalCash <= lowThreshold) warnings.push({ label: "Withdrawal cash", remaining: withdrawalCash });
+    return warnings;
+  });
+
+  showToast(`${type === "deposit" ? "Deposit" : "Withdrawal"} saved.`, "success");
+  if (lowBalance.length > 0) showLowBalanceAlert(lowBalance);
+}
+
+async function saveAdjustment(action) {
+  const { pool: poolType, dir, amount, reason } = action;
+  const poolRef = db.collection("moneyPools").doc("main");
+
+  const lowBalance = await db.runTransaction(async (t) => {
+    const poolDoc = await t.get(poolRef);
+    const pool = poolDoc.exists ? poolDoc.data() : { float: 0, withdrawalCash: 0 };
+    const field = poolType === "float" ? "float" : "withdrawalCash";
+    const current = pool[field] || 0;
+    const delta = dir === "add" ? amount : -amount;
+    const newValue = current + delta;
+    if (newValue < 0) throw new Error("This would take the balance below zero.");
+
+    t.set(poolRef, { [field]: newValue }, { merge: true });
+    t.set(db.collection("cashTransactions").doc(), {
+      type: "adjustment",
+      poolType,
+      delta,
+      newBalance: newValue,
+      reason,
+      enteredBy: wdUser.uid,
+      enteredByName: wdUser.displayName,
+      enteredByRole: wdUser.role,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return newValue <= lowThreshold ? [{ label: poolType === "float" ? "Float" : "Withdrawal cash", remaining: newValue }] : [];
+  });
+
+  showToast("Balance adjustment saved.", "success");
+  if (lowBalance.length > 0) showLowBalanceAlert(lowBalance);
+}
+
+/* ----- Low balance alert modal --------------------------------------------------- */
+function wireLowBalanceModal() {
+  document.getElementById("lowBalanceDismiss").addEventListener("click", () => {
+    document.getElementById("lowBalanceOverlay").classList.add("hidden");
+  });
+}
+
+function showLowBalanceAlert(items) {
+  document.getElementById("lowBalanceList").innerHTML = items
+    .map((i) => `<li>${escapeHtml(i.label)} balance is low — ${formatKsh(i.remaining)} left</li>`)
+    .join("");
+  document.getElementById("lowBalanceMessage").textContent =
+    items.length === 1 ? "A balance just dropped to its alert threshold." : `${items.length} balances just dropped to their alert threshold.`;
+  document.getElementById("lowBalanceOverlay").classList.remove("hidden");
 }
 
 /* ----- History ------------------------------------------------------------------- */
@@ -237,6 +446,24 @@ function renderHistorySummary() {
   document.getElementById("wdSummaryCount").textContent = filteredTransactions.length;
 }
 
+function historyRowBankOrPool(tx) {
+  if (tx.type === "adjustment") return tx.poolType === "float" ? "Float" : "Withdrawal cash";
+  return escapeHtml(tx.bankName || "—");
+}
+
+function historyRowAmount(tx) {
+  if (tx.type === "adjustment") {
+    const sign = tx.delta >= 0 ? "+" : "";
+    const cls = tx.delta >= 0 ? "change-positive" : "change-negative";
+    return `<span class="${cls}">${sign}${formatKsh(tx.delta)}</span>`;
+  }
+  let base = formatKsh(tx.amount);
+  if (tx.type === "withdrawal" && tx.fundedFromSalesCash > 0) {
+    base += `<br/><span class="hint">${formatKsh(tx.fundedFromSalesCash)} from today's sales cash</span>`;
+  }
+  return base;
+}
+
 function renderHistoryTable() {
   const tbody = document.getElementById("wdHistoryBody");
   const emptyEl = document.getElementById("wdHistoryEmpty");
@@ -249,18 +476,19 @@ function renderHistoryTable() {
   emptyEl.classList.add("hidden");
 
   tbody.innerHTML = filteredTransactions
-    .map(
-      (tx) => `
+    .map((tx) => {
+      const typeLabel = tx.type === "deposit" ? "Deposit" : tx.type === "withdrawal" ? "Withdrawal" : "Adjustment";
+      return `
       <tr>
-        <td>${escapeHtml(tx.transactionNumber)}</td>
+        <td>${escapeHtml(tx.transactionNumber || "—")}</td>
         <td>${tx.createdAt ? formatDateTime(tx.createdAt.toDate()) : "—"}</td>
-        <td><span class="wd-type-badge ${tx.type}">${tx.type === "deposit" ? "Deposit" : "Withdrawal"}</span></td>
-        <td>${escapeHtml(tx.bankName)}</td>
-        <td>${formatKsh(tx.amount)}</td>
-        <td>${escapeHtml(tx.customerName || "—")}</td>
+        <td><span class="wd-type-badge ${tx.type}">${typeLabel}</span></td>
+        <td>${historyRowBankOrPool(tx)}</td>
+        <td>${historyRowAmount(tx)}</td>
+        <td>${escapeHtml(tx.customerName || tx.reason || "—")}</td>
         <td>${escapeHtml(tx.enteredByName || "—")}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
 }
 
@@ -275,15 +503,15 @@ function exportWdCsv() {
     showToast("No transactions in this range to export.", "warning");
     return;
   }
-  const rows = [["Transaction #", "Date", "Type", "Bank", "Amount", "Customer", "Entered by"]];
+  const rows = [["Transaction #", "Date", "Type", "Bank/Pool", "Amount", "Customer/Reason", "Entered by"]];
   filteredTransactions.forEach((tx) => {
     rows.push([
-      tx.transactionNumber,
+      tx.transactionNumber || "",
       tx.createdAt ? formatDateTime(tx.createdAt.toDate()) : "",
       tx.type,
-      tx.bankName,
-      tx.amount,
-      tx.customerName || "",
+      tx.type === "adjustment" ? (tx.poolType === "float" ? "Float" : "Withdrawal cash") : tx.bankName,
+      tx.type === "adjustment" ? tx.delta : tx.amount,
+      tx.customerName || tx.reason || "",
       tx.enteredByName || "",
     ]);
   });
@@ -311,18 +539,18 @@ function exportWdPdf() {
   doc.text(`Deposits: ${formatKsh(deposits)}   Withdrawals: ${formatKsh(withdrawals)}   Transactions: ${filteredTransactions.length}`, 14, 31);
 
   const rows = filteredTransactions.map((tx) => [
-    tx.transactionNumber,
+    tx.transactionNumber || "—",
     tx.createdAt ? formatDateTime(tx.createdAt.toDate()) : "",
-    tx.type === "deposit" ? "Deposit" : "Withdrawal",
-    tx.bankName,
-    formatKsh(tx.amount),
-    tx.customerName || "—",
+    tx.type === "deposit" ? "Deposit" : tx.type === "withdrawal" ? "Withdrawal" : "Adjustment",
+    tx.type === "adjustment" ? (tx.poolType === "float" ? "Float" : "Withdrawal cash") : tx.bankName,
+    formatKsh(tx.type === "adjustment" ? tx.delta : tx.amount),
+    tx.customerName || tx.reason || "—",
     tx.enteredByName || "",
   ]);
 
   doc.autoTable({
     startY: 37,
-    head: [["Transaction #", "Date", "Type", "Bank", "Amount", "Customer", "Entered by"]],
+    head: [["Transaction #", "Date", "Type", "Bank/Pool", "Amount", "Customer/Reason", "Entered by"]],
     body: rows,
     styles: { fontSize: 8 },
     headStyles: { fillColor: [27, 73, 101] },
