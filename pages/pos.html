@@ -115,11 +115,66 @@
           <span id="totalValue">KSh 0</span>
         </div>
 
-        <div class="payment-method">
-          <span class="field-label">Payment method</span>
-          <div class="payment-toggle">
-            <button type="button" class="payment-btn active" data-method="cash">💵 Cash</button>
-            <button type="button" class="payment-btn" data-method="mobile">📱 Mobile</button>
+        <div class="payment-section">
+          <div class="payment-header">
+            <span class="field-label">Payment</span>
+            <span class="payment-remaining" id="paymentRemaining">Remaining: KSh 0</span>
+          </div>
+
+          <div class="payment-lines" id="paymentLinesList"></div>
+
+          <div class="payment-method-picker" id="paymentMethodPicker">
+            <button type="button" class="payment-btn" data-method="cash">💵 Cash</button>
+            <button type="button" class="payment-btn" data-method="mobile_transfer">📲 Mobile transfer</button>
+            <button type="button" class="payment-btn" data-method="mobile_withdrawal">🏧 Mobile withdrawal</button>
+          </div>
+
+          <!-- Cash amount entry -->
+          <div class="payment-entry hidden" id="cashEntry">
+            <div class="field">
+              <label for="cashAmountInput">Cash amount (KSh)</label>
+              <input type="number" id="cashAmountInput" min="1" step="1" />
+            </div>
+            <div class="payment-entry-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="cashEntryCancel">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="cashEntryAdd">Add</button>
+            </div>
+          </div>
+
+          <!-- Mobile transfer: shop/manager + amount -->
+          <div class="payment-entry hidden" id="transferEntry">
+            <span class="field-label-standalone">Send to</span>
+            <div class="transfer-channel-toggle">
+              <button type="button" class="channel-btn active" data-channel="shop">Shop M-Pesa</button>
+              <button type="button" class="channel-btn" data-channel="manager">Manager M-Pesa</button>
+            </div>
+            <div class="field">
+              <label for="transferAmountInput">Amount (KSh)</label>
+              <input type="number" id="transferAmountInput" min="1" step="1" />
+            </div>
+            <div class="payment-entry-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="transferEntryCancel">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="transferEntryAdd">Add</button>
+            </div>
+          </div>
+
+          <!-- Mobile withdrawal: bank + amount withdrawn -->
+          <div class="payment-entry hidden" id="withdrawalEntry">
+            <div class="field">
+              <label for="withdrawalBankSelect">Bank / channel</label>
+              <select id="withdrawalBankSelect">
+                <option value="">Select a bank…</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="withdrawalAmountInput">Amount withdrawn (KSh)</label>
+              <input type="number" id="withdrawalAmountInput" min="1" step="1" />
+            </div>
+            <p class="hint" id="withdrawalSplitHint"></p>
+            <div class="payment-entry-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="withdrawalEntryCancel">Cancel</button>
+              <button type="button" class="btn btn-primary btn-sm" id="withdrawalEntryAdd">Add</button>
+            </div>
           </div>
         </div>
 
