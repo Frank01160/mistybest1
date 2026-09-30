@@ -641,6 +641,7 @@ function wireSettings() {
         document.getElementById("companyNameInput").value = data.companyName || "Misty Code";
         document.getElementById("companyAddressInput").value = data.address || "";
         document.getElementById("companyPhoneInput").value = data.phone || "";
+        document.getElementById("floatCashThresholdInput").value = data.floatCashLowThreshold ?? 3000;
       }
     });
 
@@ -648,8 +649,9 @@ function wireSettings() {
     const companyName = document.getElementById("companyNameInput").value.trim() || "Misty Code";
     const address = document.getElementById("companyAddressInput").value.trim();
     const phone = document.getElementById("companyPhoneInput").value.trim();
+    const floatCashLowThreshold = parseFloat(document.getElementById("floatCashThresholdInput").value) || 0;
     try {
-      await db.collection("businessConfig").doc("main").set({ companyName, address, phone, currency: "KSh" }, { merge: true });
+      await db.collection("businessConfig").doc("main").set({ companyName, address, phone, floatCashLowThreshold, currency: "KSh" }, { merge: true });
       applyLogo(companyName);
       showToast("Business details saved.", "success");
     } catch (err) {
