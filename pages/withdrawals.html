@@ -46,8 +46,20 @@
   </header>
 
   <main class="wd-layout">
+    <div class="balance-cards">
+      <div class="card balance-card">
+        <span class="summary-label">Float</span>
+        <span class="summary-value" id="floatBalanceValue">KSh 0</span>
+      </div>
+      <div class="card balance-card">
+        <span class="summary-label">Withdrawal cash</span>
+        <span class="summary-value" id="cashBalanceValue">KSh 0</span>
+      </div>
+    </div>
+
     <div class="wd-tabs" role="tablist">
       <button class="tab-btn active" data-tab="entry">New transaction</button>
+      <button class="tab-btn" data-tab="adjust">Adjust balance</button>
       <button class="tab-btn" data-tab="history">History</button>
     </div>
 
@@ -84,6 +96,39 @@
       </div>
     </section>
 
+    <!-- ===== ADJUST BALANCE ===== -->
+    <section class="tab-panel hidden" id="panel-adjust">
+      <div class="card entry-card">
+        <div class="field">
+          <span class="field-label-standalone">Which balance</span>
+          <div class="wd-type-toggle">
+            <button type="button" class="wd-type-btn active" data-adjust-pool="float">Float</button>
+            <button type="button" class="wd-type-btn" data-adjust-pool="cash">Withdrawal cash</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label-standalone">Direction</span>
+          <div class="wd-type-toggle">
+            <button type="button" class="wd-type-btn active" data-adjust-dir="add">+ Add</button>
+            <button type="button" class="wd-type-btn" data-adjust-dir="deduct">− Deduct</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="adjustAmountInput">Amount (KSh)</label>
+          <input type="number" id="adjustAmountInput" min="1" step="1" placeholder="e.g. 10000" />
+        </div>
+
+        <div class="field">
+          <label for="adjustReasonWdInput">Reason (required)</label>
+          <textarea id="adjustReasonWdInput" rows="2" placeholder="e.g. Opening balance, topped up from owner's pocket, bank deposit run…"></textarea>
+        </div>
+
+        <button class="btn btn-primary wd-confirm-btn" id="adjustSubmitBtn">Continue</button>
+      </div>
+    </section>
+
     <!-- ===== HISTORY ===== -->
     <section class="tab-panel hidden" id="panel-history">
       <div class="bank-chips" id="bankChips">
@@ -106,6 +151,7 @@
               <option value="all">All</option>
               <option value="deposit">Deposits</option>
               <option value="withdrawal">Withdrawals</option>
+              <option value="adjustment">Adjustments</option>
             </select>
           </div>
         </div>
@@ -137,7 +183,7 @@
               <th>Transaction #</th>
               <th>Date/time</th>
               <th>Type</th>
-              <th>Bank</th>
+              <th>Bank / Pool</th>
               <th>Amount</th>
               <th>Customer</th>
               <th>Entered by</th>
@@ -164,6 +210,19 @@
       <div class="modal-actions">
         <button class="btn btn-outline" id="wdConfirmCancel">Cancel</button>
         <button class="btn btn-primary" id="wdConfirmSave">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Low balance alert ===== -->
+  <div class="modal-overlay hidden" id="lowBalanceOverlay">
+    <div class="modal low-balance-modal anim-low-stock">
+      <div class="low-stock-icon">⚠️</div>
+      <h3>Low balance alert</h3>
+      <p id="lowBalanceMessage">A balance just dropped to its alert threshold.</p>
+      <ul class="low-stock-list" id="lowBalanceList"></ul>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="lowBalanceDismiss">Got it</button>
       </div>
     </div>
   </div>
