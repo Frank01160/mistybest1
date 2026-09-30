@@ -31,6 +31,41 @@
 .app-header-right { display: flex; align-items: center; gap: var(--space-md); }
 .user-chip { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--font-size-sm); color: var(--color-text-secondary); }
 
+.balance-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+.balance-card {
+  padding: var(--space-md) var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+.balance-card .summary-value.low { color: var(--color-danger); }
+
+.low-balance-modal { text-align: center; max-width: 400px; }
+.low-stock-icon { font-size: 2.5rem; margin-bottom: var(--space-sm); }
+.low-stock-list {
+  text-align: left;
+  list-style: none;
+  padding: 0;
+  margin: var(--space-md) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+.low-stock-list li {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.wd-type-badge.adjustment { background: var(--color-info-soft); color: var(--color-info); }
+
 .wd-layout {
   max-width: 900px;
   margin: 0 auto;
