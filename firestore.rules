@@ -112,6 +112,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ----- moneyPools: the shared Float and Withdrawal-cash balances used by
+    // POS split payments and the Deposit/Withdraw page. Both roles read and
+    // write this (deposits, withdrawals, manual adjustments, and POS mobile-
+    // withdrawal payments all touch it) — the app's own transaction logic is
+    // what enforces the deposit/withdrawal business rules; this rule's job is
+    // just the hard floor: neither balance can ever be written negative.
+    match /moneyPools/{poolId} {
+      allow read: if isStaff();
+      allow write: if isStaff() &&
+        request.resource.data.float >= 0 &&
+        request.resource.data.withdrawalCash >= 0;
+    }
+
     // ----- counters: used only for sequential receipt numbering. Staff
     // may increment it by exactly 1 as part of completing a sale.
     match /counters/{counterId} {
