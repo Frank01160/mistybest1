@@ -122,12 +122,22 @@
   font-weight: var(--font-weight-medium);
   transition: all var(--transition-fast);
 }
+.wd-type-btn.active {
+  background: var(--color-success-soft);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
 .wd-type-btn.active[data-wd-type="deposit"] {
   background: var(--color-success-soft);
   border-color: var(--color-success);
   color: var(--color-success);
 }
 .wd-type-btn.active[data-wd-type="withdrawal"] {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+.wd-type-btn.active[data-adjust-dir="deduct"] {
   background: var(--color-danger-soft);
   border-color: var(--color-danger);
   color: var(--color-danger);
