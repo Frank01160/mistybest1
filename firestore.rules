@@ -121,8 +121,8 @@ service cloud.firestore {
     match /moneyPools/{poolId} {
       allow read: if isStaff();
       allow write: if isStaff() &&
-        request.resource.data.float >= 0 &&
-        request.resource.data.withdrawalCash >= 0;
+        request.resource.data.get('float', 0) >= 0 &&
+        request.resource.data.get('withdrawalCash', 0) >= 0;
     }
 
     // ----- counters: used only for sequential receipt numbering. Staff
