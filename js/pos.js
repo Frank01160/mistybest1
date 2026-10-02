@@ -221,7 +221,7 @@ function openUnitModal(product) {
         majorSection.classList.toggle("hidden", modalUnitMode !== "major");
         minorSection.classList.toggle("hidden", modalUnitMode !== "minor");
         if (modalUnitMode === "major") {
-          modalQty = parseInt(document.getElementById("majorQtyInput").value, 10) || 0;
+          modalQty = parseFloat(document.getElementById("majorQtyInput").value) || 0;
         } else {
           modalQty = parseFloat(document.getElementById("minorQtyInput").value) || 0;
         }
@@ -232,21 +232,27 @@ function openUnitModal(product) {
     // Major unit section — whole numbers only (e.g. full sacks)
     document.getElementById("majorUnitLabel").textContent = `Quantity (${product.majorUnitName})`;
     const majorInput = document.getElementById("majorQtyInput");
-    const maxMajor = Math.floor((product.stockMinorUnits - getBasketReservedMinor(product.id)) / product.minorPerMajor);
-    majorInput.value = maxMajor > 0 ? 1 : 0;
-    majorInput.min = 1;
-    majorInput.max = Math.max(maxMajor, 1);
-    modalQty = maxMajor > 0 ? 1 : 0;
+    // Half-unit steps (0.5, 1, 1.5, 2…) are allowed — round the raw available
+    // amount down to the nearest half so the max never overstates stock.
+    const rawMaxMajor = (product.stockMinorUnits - getBasketReservedMinor(product.id)) / product.minorPerMajor;
+    const maxMajor = Math.floor(rawMaxMajor * 2) / 2;
+    majorInput.value = maxMajor > 0 ? Math.min(1, maxMajor) : 0;
+    majorInput.min = 0.5;
+    majorInput.step = 0.5;
+    majorInput.max = Math.max(maxMajor, 0.5);
+    modalQty = maxMajor > 0 ? Math.min(1, maxMajor) : 0;
 
     function setMajorQty(value) {
-      const clamped = Math.max(1, Math.min(Math.round(value), Math.max(maxMajor, 1)));
+      // Snap to the nearest half-unit rather than a whole number.
+      const snapped = Math.round(value * 2) / 2;
+      const clamped = Math.max(0.5, Math.min(snapped, Math.max(maxMajor, 0.5)));
       majorInput.value = clamped;
       modalQty = clamped;
       validateModalQty();
     }
-    majorInput.oninput = () => setMajorQty(parseInt(majorInput.value, 10) || 1);
-    document.getElementById("majorStepDown").onclick = () => setMajorQty((parseInt(majorInput.value, 10) || 1) - 1);
-    document.getElementById("majorStepUp").onclick = () => setMajorQty((parseInt(majorInput.value, 10) || 1) + 1);
+    majorInput.oninput = () => setMajorQty(parseFloat(majorInput.value) || 0.5);
+    document.getElementById("majorStepDown").onclick = () => setMajorQty((parseFloat(majorInput.value) || 0.5) - 0.5);
+    document.getElementById("majorStepUp").onclick = () => setMajorQty((parseFloat(majorInput.value) || 0.5) + 0.5);
 
     // Minor unit section — decimal allowed (e.g. loose kg)
     document.getElementById("minorUnitLabel").textContent = `Quantity (${product.minorUnitName})`;
