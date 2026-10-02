@@ -203,10 +203,10 @@
           <span class="field-label" id="majorUnitLabel">Quantity (sacks)</span>
           <div class="qty-stepper">
             <button type="button" class="stepper-btn" id="majorStepDown" aria-label="Decrease">−</button>
-            <input type="number" id="majorQtyInput" min="1" step="1" value="1" inputmode="numeric" />
+            <input type="number" id="majorQtyInput" min="0.5" step="0.5" value="1" inputmode="decimal" />
             <button type="button" class="stepper-btn" id="majorStepUp" aria-label="Increase">+</button>
           </div>
-          <span class="hint">Sold as whole sacks only.</span>
+          <span class="hint">Whole or half units (0.5, 1, 1.5, 2…).</span>
         </div>
 
         <!-- Minor-unit selling: decimal allowed (e.g. loose kg) -->
